@@ -9,4 +9,4 @@ config/custom_sounds.map
 *.pid
 *.log
 last_notified
-pause_output.txt
+pause_output.txttests/
