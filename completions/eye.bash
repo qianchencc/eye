@@ -67,8 +67,13 @@ _eye_completions()
                 COMPREPLY=( $(compgen -W "30m 1h 2h 10m" -- "$cur") )
             fi
             ;;
+        autostart)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "on off" -- "$cur") )
+            fi
+            ;;
     esac
 }
 
 # 注册补全函数
-complete -F _eye_completions eye
+complete -o nosort -F _eye_completions eye

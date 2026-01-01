@@ -11,6 +11,10 @@ EYE_LOG="$STATE_DIR/last_notified"
 PID_FILE="$STATE_DIR/daemon.pid"
 PAUSE_FILE="$STATE_DIR/pause_until"
 
+# Systemd user service path
+SYSTEMD_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+SERVICE_FILE="$SYSTEMD_DIR/eye.service"
+
 # 确保目录存在
 mkdir -p "$CONFIG_DIR" "$DATA_DIR/sounds" "$STATE_DIR"
 
@@ -30,7 +34,6 @@ _init_messages() {
     elif [[ "$LANGUAGE" == "en" ]] || [[ "$LANGUAGE" == "English" ]]; then
         LANG_MODE="en"
     elif [[ -z "$LANGUAGE" ]]; then
-        # 只有在未配置时才检测系统语言
         if [[ "$LANG" == zh* ]]; then
             LANG_MODE="zh"
         else
@@ -51,6 +54,7 @@ _init_messages() {
         MSG_USAGE_CMD_NOW="  now              立即执行一次护眼提醒"
         MSG_USAGE_CMD_SET="  set <gap> <look> 设置时间间隔和远眺时长 (支持单位 s, m, h)\n                   例如: eye set 20m 20s"
         MSG_USAGE_CMD_LANG="  language <lang>  设置语言 (English/Chinese)"
+        MSG_USAGE_CMD_AUTOSTART="  autostart [on|off] 管理开机自启 (systemd)"
         MSG_USAGE_AUDIO="音频管理 (eye sound ...):"
         MSG_USAGE_CMD_SOUND_LIST="  sound list              列出所有可用音效"
         MSG_USAGE_CMD_SOUND_PLAY="  sound play <tag>        试听指定标签的音效"
@@ -79,7 +83,10 @@ _init_messages() {
         MSG_SET_USAGE_HINT="用法: eye set <间隔> <时长>\n示例: eye set 20m 20s"
         MSG_SET_UPDATED="✅ 配置已更新: 间隔 %s, 远眺 %s"
         MSG_LANG_UPDATED="✅ 语言已切换为: %s (Language switched to: %s)"
-        MSG_LANG_INVALID="❌ 无效的语言选项。请使用 'English' 或 'Chinese'。"
+        MSG_LANG_INVALID="❌ 无效的语言选项。请使用 'English' 或 'Chinese'."
+        MSG_AUTOSTART_ON="✅ 已开启开机自启 (已创建并启用 systemd 服务)"
+        MSG_AUTOSTART_OFF="🛑 已关闭开机自启"
+        MSG_AUTOSTART_ERROR="❌ 设置开机自启失败"
         
         MSG_SOUND_LIST_HEADER="🎵 可用音效列表："
         MSG_SOUND_LIST_BUILTIN="  [内置] (不可删除)"
@@ -132,6 +139,7 @@ _init_messages() {
         MSG_USAGE_CMD_NOW="  now              Trigger an eye break immediately"
         MSG_USAGE_CMD_SET="  set <gap> <look> Set interval and look-away duration (units: s, m, h)\n                   Example: eye set 20m 20s"
         MSG_USAGE_CMD_LANG="  language <lang>  Set language (English/Chinese)"
+        MSG_USAGE_CMD_AUTOSTART="  autostart [on|off] Manage autostart (systemd)"
         MSG_USAGE_AUDIO="Audio Management (eye sound ...):"
         MSG_USAGE_CMD_SOUND_LIST="  sound list              List all available sounds"
         MSG_USAGE_CMD_SOUND_PLAY="  sound play <tag>        Preview a specific sound"
@@ -161,6 +169,9 @@ _init_messages() {
         MSG_SET_UPDATED="✅ Config updated: Gap %s, Look-away %s"
         MSG_LANG_UPDATED="✅ Language switched to: %s"
         MSG_LANG_INVALID="❌ Invalid language option. Please use 'English' or 'Chinese'."
+        MSG_AUTOSTART_ON="✅ Autostart enabled (systemd service created and enabled)"
+        MSG_AUTOSTART_OFF="🛑 Autostart disabled"
+        MSG_AUTOSTART_ERROR="❌ Failed to setup autostart"
         
         MSG_SOUND_LIST_HEADER="🎵 Available Sounds:"
         MSG_SOUND_LIST_BUILTIN="  [Built-in] (Cannot be removed)"
@@ -272,7 +283,7 @@ EOF
     fi
     source "$CONFIG_FILE"
     
-    # 确保变量有默认值 (防止旧配置文件缺失新变量)
+    # 确保变量有默认值
     REST_GAP=${REST_GAP:-$DEFAULT_REST_GAP}
     LOOK_AWAY=${LOOK_AWAY:-$DEFAULT_LOOK_AWAY}
     SOUND_START=${SOUND_START:-$DEFAULT_SOUND_START}
@@ -336,12 +347,10 @@ _play() {
 
 _eye_action() {
     _load_config
-    # 注意：后台进程的环境变量可能不同，所以需要在 action 内部重新初始化消息 (或确保 LANG 传递)
-    # 这里简单起见再次调用初始化
+    # 重新加载消息，确保语言设置生效
     _init_messages
     
     local look_fmt=$(_format_duration ${LOOK_AWAY})
-    # 使用 printf 格式化消息
     local body_start=$(printf "$MSG_NOTIFY_BODY_START" "$look_fmt")
     
     notify-send -i appointment-soon -t 5000 "$MSG_NOTIFY_TITLE_START" "$body_start"
@@ -355,10 +364,44 @@ _eye_action() {
     date +%s > "$EYE_LOG"
 }
 
+# 守护进程主循环
+_daemon_loop() {
+    # 写入 PID (兼容 start 后台模式 和 daemon 前台模式)
+    echo $$ > "$PID_FILE"
+    
+    # 只有在 last_notified 不存在时才初始化，避免重启时重置计时
+    if [ ! -f "$EYE_LOG" ]; then
+        date +%s > "$EYE_LOG"
+    fi
+    
+    while true; do
+        _load_config
+        _init_messages
+        
+        current_time=$(date +%s)
+        
+        if [ -f "$PAUSE_FILE" ]; then
+            pause_until=$(cat "$PAUSE_FILE")
+            if [ "$current_time" -lt "$pause_until" ]; then
+                 sleep 5
+                 continue
+            else
+                 rm "$PAUSE_FILE" 
+            fi
+        fi
+
+        last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+        if [ $((current_time - last_time)) -ge $REST_GAP ]; then
+             _eye_action & 
+             wait $!
+        fi
+        sleep 5
+    done
+}
+
 # =================命令处理逻辑=================
 
 _usage() {
-    # 这里的打印逻辑也要调整
     echo "$MSG_USAGE_HEADER"
     echo ""
     echo "$MSG_USAGE_CORE"
@@ -370,6 +413,7 @@ _usage() {
     echo "$MSG_USAGE_CMD_NOW"
     echo -e "$MSG_USAGE_CMD_SET"
     echo "$MSG_USAGE_CMD_LANG"
+    echo "$MSG_USAGE_CMD_AUTOSTART"
     echo ""
     echo "$MSG_USAGE_AUDIO"
     echo "$MSG_USAGE_CMD_SOUND_LIST"
@@ -378,6 +422,71 @@ _usage() {
     echo "$MSG_USAGE_CMD_SOUND_ADD"
     echo "$MSG_USAGE_CMD_SOUND_RM"
     echo "$MSG_USAGE_CMD_SOUND_SWITCH"
+}
+
+_cmd_autostart() {
+    local action=$1
+    if [[ "$action" == "on" ]]; then
+        # 1. 确保 systemd 用户目录存在
+        mkdir -p "$SYSTEMD_DIR"
+        
+        # 2. 获取 eye 可执行文件的绝对路径
+        # 这里假设 eye 已在 PATH 中，或者使用 $0 的绝对路径
+        # 为了稳健，使用 realpath 或 readlink 解析 $0
+        local eye_exec
+        if [[ "$0" == /* ]]; then
+            eye_exec="$0"
+        else
+            eye_exec="$PWD/$0"
+        fi
+        # 如果是通过软链接运行，解析真实路径通常更好，但 systemd 需要指向可执行文件
+        # 如果 eye 在 ~/.local/bin/eye (Runtime)，我们应该指向它，而不是 Source
+        # 因为我们是在 Runtime 环境下配置 autostart
+        
+        # 强制使用标准化路径 (符合安装后的位置)
+        local install_path="${HOME}/.local/bin/eye"
+        
+        if [ ! -x "$install_path" ]; then
+             echo "Warning: Standard installation not found at $install_path. Using current executable."
+             install_path=$(readlink -f "$0")
+        fi
+
+        # 3. 创建 service 文件
+        cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Eye Protection Tool
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=$install_path daemon
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+EOF
+        
+        # 4. 启用服务
+        systemctl --user daemon-reload
+        systemctl --user enable eye.service >/dev/null 2>&1
+        systemctl --user start eye.service >/dev/null 2>&1
+        
+        if [ $? -eq 0 ]; then
+            echo "$MSG_AUTOSTART_ON"
+        else
+            echo "$MSG_AUTOSTART_ERROR"
+        fi
+        
+    elif [[ "$action" == "off" ]]; then
+        systemctl --user stop eye.service >/dev/null 2>&1
+        systemctl --user disable eye.service >/dev/null 2>&1
+        rm -f "$SERVICE_FILE"
+        systemctl --user daemon-reload
+        echo "$MSG_AUTOSTART_OFF"
+    else
+        echo "Usage: eye autostart [on|off]"
+    fi
 }
 
 _cmd_sound() {
@@ -450,8 +559,6 @@ _cmd_sound() {
                 return 1
             fi
             if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP" 2>/dev/null; then
-                # printf "$MSG_SOUND_ADD_CONFIRM_REPLACE" "$tag"
-                # read -p can't easily use variable for prompt if it has %s, so print first
                 printf "$MSG_SOUND_ADD_CONFIRM_REPLACE" "$tag"
                 read choice
                 [[ "$choice" != "y" && "$choice" != "Y" ]] && return
@@ -492,9 +599,7 @@ _cmd_sound() {
 }
 # =================主程序入口=================
 
-# 必须先加载配置才能获取 LANGUAGE 变量
 _load_config
-# 初始化语言
 _init_messages
 
 # 处理 --help
@@ -508,40 +613,18 @@ case "$1" in
         if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
             printf "$MSG_START_ALREADY_RUNNING\n" "$(cat "$PID_FILE")"
         else
-            (
-                echo $BASHPID > "$PID_FILE"
-                date +%s > "$EYE_LOG"
-                while true; do
-                    _load_config
-                    # 守护进程中每次循环都初始化一下消息，以防万一（虽然通常不需要，但为了 safety）
-                    _init_messages
-                    
-                    current_time=$(date +%s)
-                    
-                    # 检查是否暂停
-                    if [ -f "$PAUSE_FILE" ]; then
-                        pause_until=$(cat "$PAUSE_FILE")
-                        if [ "$current_time" -lt "$pause_until" ]; then
-                             sleep 5
-                             continue
-                        else
-                             rm "$PAUSE_FILE" # 暂停过期
-                        fi
-                    fi
-
-                    last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-                    if [ $((current_time - last_time)) -ge $REST_GAP ]; then
-                         _eye_action & 
-                         wait $!
-                    fi
-                    sleep 5
-                done
-            ) > /dev/null 2>&1 &
+            ( _daemon_loop ) > /dev/null 2>&1 &
             disown
             echo "$MSG_START_STARTED"
         fi
         ;; 
     stop)
+        # 尝试停止 systemd 服务（如果存在）
+        if systemctl --user is-active --quiet eye.service 2>/dev/null; then
+            systemctl --user stop eye.service
+        fi
+        
+        # 兜底：停止 PID 进程
         if [ -f "$PID_FILE" ]; then
             pkill -P $(cat "$PID_FILE") >/dev/null 2>&1
             kill $(cat "$PID_FILE") >/dev/null 2>&1
@@ -549,8 +632,14 @@ case "$1" in
             rm "$PAUSE_FILE" 2>/dev/null
             echo "$MSG_STOP_STOPPED"
         else
-            echo "$MSG_STOP_NOT_RUNNING"
+            # 如果 systemctl 已经停止了，PID 文件可能已被清理（虽然 _daemon_loop 没有 trap 清理）
+            # 但这里我们打印 "已停止" 是安全的
+            echo "$MSG_STOP_STOPPED"
         fi
+        ;; 
+    daemon)
+        # 前台运行模式 (供 systemd 使用)
+        _daemon_loop
         ;; 
     pause)
         duration_str="$*"
@@ -576,15 +665,21 @@ case "$1" in
         ;; 
     now)
         echo "$MSG_NOW_TRIGGERING"
-        ( _eye_action ) > /dev/null 2>&1 & 
+        ( _eye_action ) > /dev/null 2>&1 &
         disown
         ;; 
     status)
+        # 检查 PID 是否运行
         if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
             _load_config
             printf "$MSG_STATUS_RUNNING\n" "$(cat "$PID_FILE")"
             
-            # 显示暂停状态
+            # 检查是否是 systemd 管理的
+            if systemctl --user is-active --quiet eye.service 2>/dev/null;
+            then
+                echo "Systemd: Active"
+            fi
+            
             if [ -f "$PAUSE_FILE" ]; then
                 pause_until=$(cat "$PAUSE_FILE")
                 current=$(date +%s)
@@ -593,7 +688,7 @@ case "$1" in
                     target_date=$(date -d "@$pause_until" "+%H:%M:%S")
                     printf "$MSG_STATUS_PAUSED_REMAINING\n" "$(_format_duration $remaining)" "$target_date"
                 else
-                    rm "$PAUSE_FILE" # 清理过期文件
+                    rm "$PAUSE_FILE"
                 fi
             fi
             
@@ -647,9 +742,12 @@ case "$1" in
             exit 1
         fi
         _save_config
-        _init_messages # 重新初始化以显示正确语言的提示
+        _init_messages
         printf "$MSG_LANG_UPDATED\n" "$LANGUAGE" "$LANGUAGE"
-        ;;
+        ;; 
+    autostart)
+        _cmd_autostart "$2"
+        ;; 
     sound)
         shift
         _cmd_sound "$@"
