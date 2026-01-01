@@ -7,7 +7,7 @@ _eye_completions()
     _init_completion -n : || return
 
     # 1. 定义基础命令
-    local commands="start stop status now set sound pause resume language help"
+    local commands="start stop kill status now set sound pause resume language autostart help"
     
     # 2. 定义 sound 子命令
     local sound_commands="list play set add rm on off"
