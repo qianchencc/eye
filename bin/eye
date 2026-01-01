@@ -28,7 +28,6 @@ DEFAULT_LANGUAGE="en"
 
 # =================多语言支持 (Centralized Messages)=================
 _init_messages() {
-    # 优先使用配置文件中的 LANGUAGE，如果未设置则回退到系统 LANG，最后默认 en
     if [[ "$LANGUAGE" == "zh" ]] || [[ "$LANGUAGE" == "Chinese" ]]; then
         LANG_MODE="zh"
     elif [[ "$LANGUAGE" == "en" ]] || [[ "$LANGUAGE" == "English" ]]; then
@@ -51,8 +50,9 @@ _init_messages() {
         MSG_USAGE_CMD_KILL="  kill             强制杀死所有进程并重置状态 (相当于彻底清除)"
         MSG_USAGE_CMD_PAUSE="  pause <time>     暂停护眼模式指定时长 (例如: 1h, 30m, 1h30m)"
         MSG_USAGE_CMD_RESUME="  resume           取消暂停，立即恢复"
+        MSG_USAGE_CMD_PASS="  pass <time>      跳过指定等待时间 (让下次休息提前到来)"
         MSG_USAGE_CMD_STATUS="  status           查看当前状态"
-        MSG_USAGE_CMD_NOW="  now              立即执行一次护眼提醒"
+        MSG_USAGE_CMD_NOW="  now [--reset]    立即执行一次护眼提醒 (--reset 重置计时器)"
         MSG_USAGE_CMD_SET="  set <gap> <look> 设置时间间隔和远眺时长 (支持单位 s, m, h)\n                   例如: eye set 20m 20s"
         MSG_USAGE_CMD_LANG="  language <lang>  设置语言 (English/Chinese)"
         MSG_USAGE_CMD_AUTOSTART="  autostart [on|off] 管理开机自启 (systemd)"
@@ -74,10 +74,16 @@ _init_messages() {
         MSG_PAUSE_ERROR_FORMAT="❌ 格式错误。示例: 1h, 30m, 10s"
         MSG_RESUME_RESUMED="▶️  暂停已取消，恢复运行"
         MSG_RESUME_NOT_PAUSED="⚠️  当前未处于暂停状态"
+        MSG_PASS_ERROR="❌ 请指定时间 (如 10m)"
+        MSG_PASS_SKIPPED="⏩ 已跳过 %s (休息将提前到来)"
+        MSG_NOW_MANUAL_RESET="✅ 已触发手动放松，计时器已重置。"
+        MSG_NOW_MANUAL_TRIGGERED="✅ 已触发手动放松。"
+        MSG_NOW_MANUAL_NO_RESET="🔔 单次放松执行完毕。(注意：护眼服务当前处于关闭状态)"
         MSG_NOW_TRIGGERING="🔄 正在触发远眺..."
         MSG_STATUS_RUNNING="🟢 运行中 | PID: %s"
         MSG_STATUS_PAUSED_REMAINING="⏸️  [已暂停] 剩余: %s (直到 %s)"
-        MSG_STATUS_STOPPED="🔴 已停止"
+        MSG_STATUS_STOPPED="🔴 服务未运行 (Stopped)"
+        MSG_STATUS_STOPPED_HINT="   💡 提示: 输入 'eye start' 开启护眼模式，或 'eye now' 进行单次放松。"
         MSG_STATUS_CONFIG="⚙️  配置: %s 间隔 / %s 远眺"
         MSG_STATUS_LAST_REST="⏱️  上次休息: %s 前"
         MSG_STATUS_SOUND="🔊 音效: [%s] -> [%s] (开关: %s)"
@@ -139,8 +145,9 @@ _init_messages() {
         MSG_USAGE_CMD_KILL="  kill             Force kill all processes and reset state"
         MSG_USAGE_CMD_PAUSE="  pause <time>     Pause for a specific duration (e.g., 1h, 30m, 1h30m)"
         MSG_USAGE_CMD_RESUME="  resume           Resume from pause immediately"
+        MSG_USAGE_CMD_PASS="  pass <time>      Skip waiting time (advance timer)"
         MSG_USAGE_CMD_STATUS="  status           Show current status"
-        MSG_USAGE_CMD_NOW="  now              Trigger an eye break immediately"
+        MSG_USAGE_CMD_NOW="  now [--reset]    Trigger manual break (--reset to reset timer)"
         MSG_USAGE_CMD_SET="  set <gap> <look> Set interval and look-away duration (units: s, m, h)\n                   Example: eye set 20m 20s"
         MSG_USAGE_CMD_LANG="  language <lang>  Set language (English/Chinese)"
         MSG_USAGE_CMD_AUTOSTART="  autostart [on|off] Manage autostart (systemd)"
@@ -162,10 +169,16 @@ _init_messages() {
         MSG_PAUSE_ERROR_FORMAT="❌ Invalid format. Example: 1h, 30m, 10s"
         MSG_RESUME_RESUMED="▶️  Pause cancelled, resumed"
         MSG_RESUME_NOT_PAUSED="⚠️  Not currently paused"
+        MSG_PASS_ERROR="❌ Please specify time (e.g. 10m)"
+        MSG_PASS_SKIPPED="⏩ Skipped %s (Break will come sooner)"
+        MSG_NOW_MANUAL_RESET="✅ Triggered manual break, timer reset."
+        MSG_NOW_MANUAL_TRIGGERED="✅ Manual break triggered."
+        MSG_NOW_MANUAL_NO_RESET="🔔 Manual break finished. (Note: Daemon is stopped)"
         MSG_NOW_TRIGGERING="🔄 Triggering look-away..."
         MSG_STATUS_RUNNING="🟢 Running | PID: %s"
         MSG_STATUS_PAUSED_REMAINING="⏸️  [Paused] Remaining: %s (until %s)"
-        MSG_STATUS_STOPPED="🔴 Stopped"
+        MSG_STATUS_STOPPED="🔴 Service Stopped"
+        MSG_STATUS_STOPPED_HINT="   💡 Hint: Type 'eye start' to enable, or 'eye now' for a manual break."
         MSG_STATUS_CONFIG="⚙️  Config: %s gap / %s look-away"
         MSG_STATUS_LAST_REST="⏱️  Last rest: %s ago"
         MSG_STATUS_SOUND="🔊 Sound: [%s] -> [%s] (Switch: %s)"
@@ -352,8 +365,8 @@ _play() {
 }
 
 _eye_action() {
+    local reset_timer=${1:-true}
     _load_config
-    # 重新加载消息，确保语言设置生效
     _init_messages
     
     local look_fmt=$(_format_duration ${LOOK_AWAY})
@@ -367,15 +380,15 @@ _eye_action() {
     notify-send -i emblem-success -t 3000 "$MSG_NOTIFY_TITLE_END" "$MSG_NOTIFY_BODY_END"
     _play "$SOUND_END"
     
-    date +%s > "$EYE_LOG"
+    if [ "$reset_timer" == "true" ]; then
+        date +%s > "$EYE_LOG"
+    fi
 }
 
 # 守护进程主循环
 _daemon_loop() {
-    # 写入 PID (兼容 start 后台模式 和 daemon 前台模式)
     echo $BASHPID > "$PID_FILE"
     
-    # 只有在 last_notified 不存在时才初始化，避免重启时重置计时
     if [ ! -f "$EYE_LOG" ]; then
         date +%s > "$EYE_LOG"
     fi
@@ -398,7 +411,7 @@ _daemon_loop() {
 
         last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
         if [ $((current_time - last_time)) -ge $REST_GAP ]; then
-             _eye_action & 
+             _eye_action true & 
              wait $!
         fi
         sleep 5
@@ -416,6 +429,7 @@ _usage() {
     echo "$MSG_USAGE_CMD_KILL"
     echo "$MSG_USAGE_CMD_PAUSE"
     echo "$MSG_USAGE_CMD_RESUME"
+    echo "$MSG_USAGE_CMD_PASS"
     echo "$MSG_USAGE_CMD_STATUS"
     echo "$MSG_USAGE_CMD_NOW"
     echo -e "$MSG_USAGE_CMD_SET"
@@ -598,7 +612,8 @@ fi
 
 case "$1" in
     start)
-        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
+        then
             printf "$MSG_START_ALREADY_RUNNING\n" "$(cat "$PID_FILE")"
         else
             ( _daemon_loop ) > /dev/null 2>&1 &
@@ -607,7 +622,8 @@ case "$1" in
         fi
         ;; 
     stop)
-        if systemctl --user is-active --quiet eye.service 2>/dev/null; then
+        if systemctl --user is-active --quiet eye.service 2>/dev/null;
+        then
             systemctl --user stop eye.service
         fi
         
@@ -622,39 +638,26 @@ case "$1" in
         fi
         ;; 
     kill)
-        # 1. 禁用 systemd 自启 (Reset State)
         _cmd_autostart "off" >/dev/null 2>&1
-        
-        # 2. 停止 systemd 服务
         systemctl --user stop eye.service 2>/dev/null
         
-        # 3. 杀掉 PID 文件记录的进程
         if [ -f "$PID_FILE" ]; then
             pid=$(cat "$PID_FILE")
-            # 尝试 SIGTERM
             kill "$pid" 2>/dev/null
-            # 尝试 SIGKILL
             kill -9 "$pid" 2>/dev/null
             rm "$PID_FILE" 2>/dev/null
         fi
         
-        # 4. 全面搜捕 (Cleanup all instances by name)
-        # pgrep -f "bin/eye" 会匹配到我们自己这个脚本，所以要过滤
-        # 使用 exec -a 的名字更好，但这里我们还是用路径匹配
-        # 过滤掉: 当前进程 $$ ($BASHPID), grep 命令本身, 以及可能的编辑器进程
         for pid in $(pgrep -f "bin/eye"); do
             if [ "$pid" != "$$" ] && [ "$pid" != "$BASHPID" ]; then
                 kill -9 "$pid" 2>/dev/null
             fi
         done
         
-        # 5. 清理运行时文件
         rm "$PAUSE_FILE" 2>/dev/null
-        
         echo "$MSG_KILL_DONE"
         ;;
     daemon)
-        # 前台运行模式 (供 systemd 使用)
         _daemon_loop
         ;; 
     pause)
@@ -670,7 +673,24 @@ case "$1" in
         else
              echo "$MSG_PAUSE_ERROR_FORMAT"
         fi
-        ;; 
+        ;;
+    pass)
+        duration_str="$*"
+        [ -z "$duration_str" ] && { echo "$MSG_PASS_ERROR"; exit 1; }
+        seconds=$(_parse_duration "$duration_str")
+        if [ $? -eq 0 ]; then
+            if [ ! -f "$EYE_LOG" ]; then
+                 date +%s > "$EYE_LOG"
+            fi
+            current_last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+            # 让 last_time 变小，相当于已经过了更多时间
+            new_last=$((current_last - seconds))
+            echo "$new_last" > "$EYE_LOG"
+            printf "$MSG_PASS_SKIPPED\n" "$(_format_duration $seconds)"
+        else
+             echo "$MSG_PAUSE_ERROR_FORMAT"
+        fi
+        ;;
     resume)
         if [ -f "$PAUSE_FILE" ]; then
             rm "$PAUSE_FILE"
@@ -681,17 +701,32 @@ case "$1" in
         ;; 
     now)
         echo "$MSG_NOW_TRIGGERING"
-        ( _eye_action ) > /dev/null 2>&1 &
+        
+        is_reset="false"
+        if [[ "$2" == "--reset" ]]; then
+            is_reset="true"
+        fi
+        
+        ( _eye_action "$is_reset" ) > /dev/null 2>&1 &
         disown
+        
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
+        then
+            if [[ "$is_reset" == "true" ]]; then
+                echo "$MSG_NOW_MANUAL_RESET"
+            else
+                echo "$MSG_NOW_MANUAL_TRIGGERED"
+            fi
+        else
+            echo "$MSG_NOW_MANUAL_NO_RESET"
+        fi
         ;; 
     status)
-        # 检查 PID 是否运行
         if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
         then
             _load_config
             printf "$MSG_STATUS_RUNNING\n" "$(cat "$PID_FILE")"
             
-            # 检查是否是 systemd 管理的
             if systemctl --user is-active --quiet eye.service 2>/dev/null;
             then
                 echo "$MSG_STATUS_SYSTEMD_ACTIVE"
@@ -719,6 +754,7 @@ case "$1" in
             printf "$MSG_STATUS_LANG\n" "$LANGUAGE"
         else
             echo "$MSG_STATUS_STOPPED"
+            echo "$MSG_STATUS_STOPPED_HINT"
         fi
         ;; 
     set)

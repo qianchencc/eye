@@ -7,7 +7,7 @@ _eye_completions()
     _init_completion -n : || return
 
     # 1. 定义基础命令
-    local commands="start stop kill status now set sound pause resume language autostart help"
+    local commands="start stop kill status now pass set sound pause resume language autostart help"
     
     # 2. 定义 sound 子命令
     local sound_commands="list play set add rm on off"
@@ -62,14 +62,23 @@ _eye_completions()
             fi
             ;;
         pause)
-            # eye pause [TIME] - 可以提示一些常用时间
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "30m 1h 2h 10m" -- "$cur") )
+            fi
+            ;;
+        pass)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "10m 30m 1h" -- "$cur") )
             fi
             ;;
         autostart)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "on off" -- "$cur") )
+            fi
+            ;;
+        now)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "--reset" -- "$cur") )
             fi
             ;;
     esac
