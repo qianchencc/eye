@@ -80,7 +80,7 @@ case "$CMD" in
     pass)       _cmd_pass "$@" ;;
     resume)     _cmd_resume ;;
     now)        _cmd_now "$@" ;;
-    status)     _cmd_status ;;
+    status)     _cmd_status "$@" ;;
     set)        _cmd_set "$@" ;;
     language)   _cmd_language "$@" ;;
     config)     _cmd_config "$@" ;;

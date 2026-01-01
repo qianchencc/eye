@@ -17,6 +17,7 @@ PID_FILE="$STATE_DIR/daemon.pid"
 PAUSE_FILE="$STATE_DIR/pause_until"
 PAUSE_START_FILE="$STATE_DIR/pause_start"
 STOP_FILE="$STATE_DIR/stop_time"
+BREAK_LOCK_FILE="$STATE_DIR/break.lock"
 
 # Systemd user service path
 SYSTEMD_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"

@@ -109,12 +109,25 @@ _init_messages() {
         MSG_SOUND_OFF="音效已关闭。"
         MSG_SOUND_USAGE="用法: eye sound [list|play|set|add|rm|on|off]"
         
-        # Notifications (Keep emojis here for UI friendliness)
-        MSG_NOTIFY_TITLE_START="👀 护眼时间"
+        # Notifications
+        MSG_NOTIFY_TITLE_START="护眼提醒"
         MSG_NOTIFY_BODY_START="请远眺 %s！"
-        MSG_NOTIFY_TITLE_END="✅ 休息结束"
-        MSG_NOTIFY_BODY_END="眼睛休息完毕，继续工作吧！"
+        MSG_NOTIFY_TITLE_END="休息结束"
+        MSG_NOTIFY_BODY_END="眼睛休息完毕，继续工作吧。"
         MSG_ERROR_INVALID_TIME_FORMAT="错误: 时间格式无效"
+        
+        # Status Human Readable
+        MSG_STATUS_HEADER="护眼状态"
+        MSG_STATUS_RUNNING_HUMAN="状态: 运行中 (PID: %s)"
+        MSG_STATUS_PAUSED_HUMAN="状态: 暂停中%s"
+        MSG_STATUS_STOPPED_HUMAN="状态: 已停止"
+        MSG_STATUS_NOT_RUNNING_HUMAN="状态: 未运行"
+        MSG_STATUS_LAST_REST_HUMAN="上次休息: %s 前"
+        MSG_STATUS_CONFIG_HUMAN="配置: 间隔 %s / 远眺 %s"
+        MSG_STATUS_SOUND_HUMAN="音效: %s"
+        MSG_STATUS_SYSTEMD_HUMAN="Systemd: 已激活"
+        MSG_STATUS_PAUSED_REMAINING_HUMAN=" (剩余暂停: %s)"
+        MSG_STATUS_PAUSED_EXPIRED_HUMAN=" (暂停已过期)"
         
     else
         # --- English ---
@@ -209,10 +222,23 @@ _init_messages() {
         MSG_SOUND_USAGE="Usage: eye sound [list|play|set|add|rm|on|off]"
         
         # Notifications
-        MSG_NOTIFY_TITLE_START="👀 Eye Protection"
+        MSG_NOTIFY_TITLE_START="Eye Protection"
         MSG_NOTIFY_BODY_START="Look away for %s!"
-        MSG_NOTIFY_TITLE_END="✅ Break Ended"
+        MSG_NOTIFY_TITLE_END="Break Ended"
         MSG_NOTIFY_BODY_END="Eyes rested. Keep going!"
         MSG_ERROR_INVALID_TIME_FORMAT="Error: Invalid time format"
+        
+        # Status Human Readable
+        MSG_STATUS_HEADER="Eye Protection Status"
+        MSG_STATUS_RUNNING_HUMAN="Status: Running (PID: %s)"
+        MSG_STATUS_PAUSED_HUMAN="Status: Paused%s"
+        MSG_STATUS_STOPPED_HUMAN="Status: Stopped"
+        MSG_STATUS_NOT_RUNNING_HUMAN="Status: Not Running"
+        MSG_STATUS_LAST_REST_HUMAN="Last Rest: %s ago"
+        MSG_STATUS_CONFIG_HUMAN="Configuration: Interval %s / Look-away %s"
+        MSG_STATUS_SOUND_HUMAN="Sound: %s"
+        MSG_STATUS_SYSTEMD_HUMAN="Systemd: Active"
+        MSG_STATUS_PAUSED_REMAINING_HUMAN=" (Paused for %s remaining)"
+        MSG_STATUS_PAUSED_EXPIRED_HUMAN=" (Pause expired)"
     fi
 }

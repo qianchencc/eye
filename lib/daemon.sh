@@ -4,30 +4,39 @@
 
 _eye_action() {
     local reset_timer=${1:-true}
+    
+    # Create lock file
+    touch "$BREAK_LOCK_FILE"
+    
     _load_config
     _init_messages
     
     local look_fmt=$(_format_duration ${LOOK_AWAY})
     local body_start=$(printf "$MSG_NOTIFY_BODY_START" "$look_fmt")
     
-    notify-send -i appointment-soon -t 5000 "$MSG_NOTIFY_TITLE_START" "$body_start"
+    notify-send -t 5000 "$MSG_NOTIFY_TITLE_START" "$body_start"
     _play "$SOUND_START"
     
     sleep "$LOOK_AWAY"
     
-    notify-send -i emblem-success -t 3000 "$MSG_NOTIFY_TITLE_END" "$MSG_NOTIFY_BODY_END"
+    notify-send -t 3000 "$MSG_NOTIFY_TITLE_END" "$MSG_NOTIFY_BODY_END"
     _play "$SOUND_END"
     
     if [ "$reset_timer" == "true" ]; then
         date +%s > "$EYE_LOG"
     fi
+    
+    # Remove lock file
+    rm -f "$BREAK_LOCK_FILE"
 }
 
 # 守护进程主循环
 IS_ACTING=0
 _check_trigger() {
-    # 如果正在执行动作，则忽略
-    [ "$IS_ACTING" -eq 1 ] && return
+    # If acting (internal flag) or lock file exists, ignore
+    if [ "$IS_ACTING" -eq 1 ] || [ -f "$BREAK_LOCK_FILE" ]; then
+        return
+    fi
     
     _load_config
     # _init_messages # Loop already calls it? Maybe better here too

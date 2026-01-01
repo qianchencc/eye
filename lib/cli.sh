@@ -152,6 +152,16 @@ _cmd_pass() {
 }
 
 _cmd_now() {
+    # Check if break is already in progress
+    if [ -f "$BREAK_LOCK_FILE" ]; then
+        if [ "$EYE_MODE" == "unix" ] || [ -n "$QUIET_MODE" ]; then
+            exit 0
+        else
+            msg_warn "Break already in progress."
+            exit 0
+        fi
+    fi
+
     msg_info "$MSG_NOW_TRIGGERING"
     
     is_reset="false"
@@ -174,102 +184,139 @@ _cmd_now() {
 }
 
 _cmd_status() {
+    # Parse arguments for status command
+    long_mode=0
+    for arg in "$@"; do
+        if [[ "$arg" == "-l" ]] || [[ "$arg" == "--long" ]]; then
+            long_mode=1
+        fi
+    done
+    
+    # DEBUG
+    # echo "DEBUG: long_mode=$long_mode args=$@"
+
     is_running=0
+    pid=""
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
         is_running=1
+        pid=$(cat "$PID_FILE")
     fi
     
     _load_config
     
-    # Machine readable output if piped OR Unix mode
-    if [ ! -t 1 ] || [ "$EYE_MODE" == "unix" ]; then
+    # 1. Machine Readable Mode (Pipe)
+    if [ ! -t 1 ]; then
         if [ $is_running -eq 1 ]; then
-            msg_data "status=running"
-            msg_data "pid=$(cat "$PID_FILE")"
+            echo "status=running"
+            echo "pid=$pid"
         elif [ -f "$EYE_LOG" ]; then
-             msg_data "status=stopped"
+             echo "status=stopped"
         else
-             msg_data "status=dead"
+             echo "status=dead"
         fi
         
-        msg_data "gap_seconds=$REST_GAP"
-        msg_data "look_seconds=$LOOK_AWAY"
-        msg_data "language=$LANGUAGE"
-        msg_data "sound_switch=$SOUND_SWITCH"
+        echo "gap_seconds=$REST_GAP"
+        echo "look_seconds=$LOOK_AWAY"
+        echo "language=$LANGUAGE"
+        echo "sound_switch=$SOUND_SWITCH"
         
+        paused="false"
         if [ -f "$PAUSE_FILE" ]; then
-            msg_data "paused=true"
-            msg_data "pause_until=$(cat "$PAUSE_FILE")"
-        else
-            msg_data "paused=false"
+            paused="true"
+            echo "pause_until=$(cat "$PAUSE_FILE")"
         fi
+        echo "paused=$paused"
         
         last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
         diff=$(( $(date +%s) - last ))
-        msg_data "last_rest_ago=$diff"
+        echo "last_rest_ago=$diff"
         return
     fi
 
-    # Human readable output (Normal Mode)
-    if [ $is_running -eq 1 ]; then
-        msg_success "$(printf "$MSG_STATUS_RUNNING" "$(cat "$PID_FILE")")"
+    # 2. Human Readable Mode (TTY)
+    last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+    current_ts=$(date +%s)
+    raw_diff=$((current_ts - last))
+    
+    # Calculate effective diff (subtract stagnation time)
+    effective_diff=$raw_diff
+    
+    # Handle Pause Info & Adjustment
+    pause_info=""
+    paused="false"
+    if [ -f "$PAUSE_FILE" ]; then
+        pause_until=$(cat "$PAUSE_FILE")
+        if [ "$current_ts" -lt "$pause_until" ]; then
+            paused="true"
+            # Calculate pause duration so far
+            if [ -f "$PAUSE_START_FILE" ]; then
+                pause_start=$(cat "$PAUSE_START_FILE")
+                current_pause_duration=$((current_ts - pause_start))
+                effective_diff=$((raw_diff - current_pause_duration))
+            fi
+            
+            # Remaining time
+            p_diff=$((pause_until - current_ts))
+            p_fmt=$(_format_duration $p_diff)
+            pause_info=$(printf "$MSG_STATUS_PAUSED_REMAINING_HUMAN" "$p_fmt")
+        else
+            pause_info="$MSG_STATUS_PAUSED_EXPIRED_HUMAN"
+            rm "$PAUSE_FILE"
+        fi
+    fi
+    
+    # Handle Stop Adjustment
+    if [ $is_running -eq 0 ] && [ -f "$STOP_FILE" ]; then
+        stop_time=$(cat "$STOP_FILE")
+        stop_duration=$((current_ts - stop_time))
+        effective_diff=$((raw_diff - stop_duration))
+    fi
+    
+    # Format effective diff
+    if [ $effective_diff -lt 0 ]; then effective_diff=0; fi
+    rest_fmt=$(_format_duration $effective_diff)
+    
+    # Config format
+    gap_fmt=$(_format_duration $REST_GAP)
+    look_fmt=$(_format_duration $LOOK_AWAY)
+
+    # Output Logic
+    
+    # Status indicators for Last Rest line
+    status_suffix=""
+    if [ "$paused" == "true" ]; then
+        status_suffix=" (Paused)"
+    elif [ $is_running -eq 0 ] && [ -f "$EYE_LOG" ]; then
+        status_suffix=" (Stopped)"
+    elif [ $is_running -eq 0 ]; then
+        status_suffix=" (Not Running)"
+    fi
+
+    # Concise Output (Default)
+    # Format: Last Rest: <time> ago<status> [<gap> / <look>]
+    last_rest_str=$(printf "$MSG_STATUS_LAST_REST_HUMAN" "$rest_fmt")
+    echo "${last_rest_str}${status_suffix} [${gap_fmt} / ${look_fmt}]"
+    
+    # Long Output (-l/--long)
+    if [ $long_mode -eq 1 ]; then
+        if [ $is_running -eq 1 ]; then
+            if [ "$paused" == "true" ]; then
+                 echo "$(printf "$MSG_STATUS_PAUSED_HUMAN" "$pause_info")"
+            else
+                 echo "$(printf "$MSG_STATUS_RUNNING_HUMAN" "$pid")"
+            fi
+        elif [ -f "$EYE_LOG" ]; then
+            echo "$MSG_STATUS_STOPPED_HUMAN"
+        else
+            echo "$MSG_STATUS_NOT_RUNNING_HUMAN"
+        fi
+        
+        echo "$(printf "$MSG_STATUS_CONFIG_HUMAN" "$gap_fmt" "$look_fmt")"
+        echo "$(printf "$MSG_STATUS_SOUND_HUMAN" "$SOUND_SWITCH")"
         
         if systemctl --user is-active --quiet eye.service 2>/dev/null; then
-            msg_info "$MSG_STATUS_SYSTEMD_ACTIVE"
+            echo "$MSG_STATUS_SYSTEMD_HUMAN"
         fi
-        
-        if [ -f "$PAUSE_FILE" ]; then
-            pause_until=$(cat "$PAUSE_FILE")
-            current=$(date +%s)
-            if [ "$current" -lt "$pause_until" ]; then
-                remaining=$((pause_until - current))
-                target_date=$(date -d "@$pause_until" "+%H:%M:%S")
-                msg_warn "$(printf "$MSG_STATUS_PAUSED_REMAINING" "$(_format_duration $remaining)" "$target_date")"
-                
-                if [ -f "$PAUSE_START_FILE" ]; then
-                    pause_start=$(cat "$PAUSE_START_FILE")
-                    last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-                    diff=$((pause_start - last))
-                    msg_data "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
-                fi
-            else
-                rm "$PAUSE_FILE"
-            fi
-        else 
-            last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-            diff=$(( $(date +%s) - last ))
-            gap_fmt=$(_format_duration $REST_GAP)
-            look_fmt=$(_format_duration $LOOK_AWAY)
-            msg_info "$(printf "$MSG_STATUS_CONFIG" "$gap_fmt" "$look_fmt")"
-            msg_info "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
-            msg_data "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
-            msg_data "$(printf "$MSG_STATUS_LANG" "$LANGUAGE")"
-        fi
-        
-    elif [ -f "$EYE_LOG" ]; then
-        msg_info "$MSG_STATUS_STOPPED"
-        
-        gap_fmt=$(_format_duration $REST_GAP)
-        look_fmt=$(_format_duration $LOOK_AWAY)
-        msg_info "$(printf "$MSG_STATUS_CONFIG" "$gap_fmt" "$look_fmt")"
-        
-        if [ -f "$STOP_FILE" ]; then
-            stop_time=$(cat "$STOP_FILE")
-            last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-            diff=$((stop_time - last))
-            msg_data "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
-        else
-            last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-            diff=$(( $(date +%s) - last ))
-            msg_data "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
-        fi
-        
-        msg_data "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
-        msg_data "$MSG_STATUS_STOPPED_HINT"
-        
-    else
-        msg_error "$MSG_STATUS_KILLED"
-        msg_data "$MSG_STATUS_STOPPED_HINT"
     fi
 }
 
