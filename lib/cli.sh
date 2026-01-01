@@ -16,6 +16,7 @@ _cmd_usage() {
     echo "$MSG_USAGE_CMD_NOW"
     echo -e "$MSG_USAGE_CMD_SET"
     echo "$MSG_USAGE_CMD_LANG"
+    echo "  config mode <mode> Set mode (unix|normal)"
     echo "$MSG_USAGE_CMD_AUTOSTART"
     echo ""
     echo "$MSG_USAGE_AUDIO"
@@ -29,7 +30,12 @@ _cmd_usage() {
 
 _cmd_start() {
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-        msg_warn "$(printf "$MSG_START_ALREADY_RUNNING" "$(cat "$PID_FILE")")"
+        # Idempotency check: Exit 0 silently in Unix mode/Quiet, else warn.
+        if [ "$EYE_MODE" == "unix" ] || [ -n "$QUIET_MODE" ]; then
+            exit 0
+        else
+            msg_warn "$(printf "$MSG_START_ALREADY_RUNNING" "$(cat "$PID_FILE")")"
+        fi
     else
         ( _daemon_loop ) > /dev/null 2>&1 &
         disown
@@ -83,7 +89,7 @@ _cmd_kill() {
 }
 
 _cmd_pause() {
-    duration_str="$*"
+    duration_str=$(_read_input "$@")
     [ -z "$duration_str" ] && { msg_error "$MSG_PAUSE_SPECIFY_DURATION"; exit 1; }
     seconds=$(_parse_duration "$duration_str")
     if [ $? -eq 0 ]; then
@@ -117,7 +123,7 @@ _cmd_resume() {
 }
 
 _cmd_pass() {
-    duration_str="$*"
+    duration_str=$(_read_input "$@")
     [ -z "$duration_str" ] && { msg_error "$MSG_PASS_ERROR"; exit 1; }
     seconds=$(_parse_duration "$duration_str")
     if [ $? -eq 0 ]; then
@@ -173,8 +179,39 @@ _cmd_status() {
         is_running=1
     fi
     
+    _load_config
+    
+    # Machine readable output if piped OR Unix mode
+    if [ ! -t 1 ] || [ "$EYE_MODE" == "unix" ]; then
+        if [ $is_running -eq 1 ]; then
+            msg_data "status=running"
+            msg_data "pid=$(cat "$PID_FILE")"
+        elif [ -f "$EYE_LOG" ]; then
+             msg_data "status=stopped"
+        else
+             msg_data "status=dead"
+        fi
+        
+        msg_data "gap_seconds=$REST_GAP"
+        msg_data "look_seconds=$LOOK_AWAY"
+        msg_data "language=$LANGUAGE"
+        msg_data "sound_switch=$SOUND_SWITCH"
+        
+        if [ -f "$PAUSE_FILE" ]; then
+            msg_data "paused=true"
+            msg_data "pause_until=$(cat "$PAUSE_FILE")"
+        else
+            msg_data "paused=false"
+        fi
+        
+        last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+        diff=$(( $(date +%s) - last ))
+        msg_data "last_rest_ago=$diff"
+        return
+    fi
+
+    # Human readable output (Normal Mode)
     if [ $is_running -eq 1 ]; then
-        _load_config
         msg_success "$(printf "$MSG_STATUS_RUNNING" "$(cat "$PID_FILE")")"
         
         if systemctl --user is-active --quiet eye.service 2>/dev/null; then
@@ -193,7 +230,7 @@ _cmd_status() {
                     pause_start=$(cat "$PAUSE_START_FILE")
                     last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
                     diff=$((pause_start - last))
-                    echo "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
+                    msg_data "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
                 fi
             else
                 rm "$PAUSE_FILE"
@@ -205,12 +242,11 @@ _cmd_status() {
             look_fmt=$(_format_duration $LOOK_AWAY)
             msg_info "$(printf "$MSG_STATUS_CONFIG" "$gap_fmt" "$look_fmt")"
             msg_info "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
-            echo "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
-            echo "$(printf "$MSG_STATUS_LANG" "$LANGUAGE")"
+            msg_data "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
+            msg_data "$(printf "$MSG_STATUS_LANG" "$LANGUAGE")"
         fi
         
     elif [ -f "$EYE_LOG" ]; then
-        _load_config
         msg_info "$MSG_STATUS_STOPPED"
         
         gap_fmt=$(_format_duration $REST_GAP)
@@ -221,25 +257,29 @@ _cmd_status() {
             stop_time=$(cat "$STOP_FILE")
             last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
             diff=$((stop_time - last))
-            echo "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
+            msg_data "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
         else
             last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
             diff=$(( $(date +%s) - last ))
-            echo "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
+            msg_data "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
         fi
         
-        echo "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
-        echo "$MSG_STATUS_STOPPED_HINT"
+        msg_data "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
+        msg_data "$MSG_STATUS_STOPPED_HINT"
         
     else
         msg_error "$MSG_STATUS_KILLED"
-        echo "$MSG_STATUS_STOPPED_HINT"
+        msg_data "$MSG_STATUS_STOPPED_HINT"
     fi
 }
 
 _cmd_set() {
-    gap_input=$1
-    look_input=$2
+    input_str=$(_read_input "$@")
+    # Split input into array
+    read -r -a args <<< "$input_str"
+    gap_input=${args[0]}
+    look_input=${args[1]}
+    
     if [ -z "$gap_input" ]; then
         msg_error "$(echo -e "$MSG_SET_USAGE_HINT")"
         exit 1
@@ -265,7 +305,7 @@ _cmd_set() {
 }
 
 _cmd_language() {
-    lang_input=$1
+    lang_input=$(_read_input "$@")
     if [[ "$lang_input" == "en" ]] || [[ "$lang_input" == "English" ]]; then
         LANGUAGE="en"
     elif [[ "$lang_input" == "zh" ]] || [[ "$lang_input" == "Chinese" ]]; then
@@ -277,5 +317,24 @@ _cmd_language() {
     _save_config
     _init_messages
     msg_success "$(printf "$MSG_LANG_UPDATED" "$LANGUAGE")"
+}
+
+_cmd_config() {
+    local subcmd=$1
+    shift
+    if [ "$subcmd" == "mode" ]; then
+        local mode=$1
+        if [[ "$mode" == "unix" || "$mode" == "normal" ]]; then
+            EYE_MODE="$mode"
+            _save_config
+            msg_success "Mode updated to: $mode"
+        else
+            msg_error "Usage: eye config mode <unix|normal>"
+            exit 1
+        fi
+    else
+         msg_error "Usage: eye config mode <unix|normal>"
+         exit 1
+    fi
 }
 

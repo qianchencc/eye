@@ -3,7 +3,7 @@
 # ================= Logging & Formatting =================
 
 # Colors
-if [ -t 1 ]; then
+if [ -t 1 ] && [ -z "$NO_COLOR" ]; then
     _C_RESET='\033[0m'
     _C_RED='\033[31m'
     _C_GREEN='\033[32m'
@@ -17,6 +17,11 @@ else
     _C_BOLD=''
 fi
 
+# Print raw data to stdout (Always print, no silence)
+msg_data() {
+    echo "$*"
+}
+
 msg_error() {
     printf "${_C_RED}%s${_C_RESET}\n" "$*" >&2
 }
@@ -26,14 +31,35 @@ msg_warn() {
 }
 
 msg_info() {
-    printf "${_C_BOLD}%s${_C_RESET}\n" "$*"
+    # Silent if QUIET_MODE is set or EYE_MODE is unix or not TTY
+    if [ -z "$QUIET_MODE" ] && [ "$EYE_MODE" != "unix" ] && [ -t 1 ]; then
+        printf "${_C_BOLD}%s${_C_RESET}\n" "$*"
+    fi
 }
 
 msg_success() {
-    printf "${_C_GREEN}%s${_C_RESET}\n" "$*"
+    # Silent if QUIET_MODE is set or EYE_MODE is unix or not TTY
+    if [ -z "$QUIET_MODE" ] && [ "$EYE_MODE" != "unix" ] && [ -t 1 ]; then
+        printf "${_C_GREEN}%s${_C_RESET}\n" "$*"
+    fi
 }
 
 # ================= Core Functions =================
+
+# Read input from arguments or stdin
+_read_input() {
+    if [ $# -gt 0 ]; then
+        echo "$*"
+    elif [ ! -t 0 ]; then
+        # Read from stdin
+        local input
+        input=$(cat)
+        # Trim leading and trailing whitespace
+        input="${input#"${input%%[![:space:]]*}"}"
+        input="${input%"${input##*[![:space:]]}"}"
+        echo "$input"
+    fi
+}
 
 # Time parser (supports 1h 30m 20s)
 _parse_duration() {

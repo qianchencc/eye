@@ -34,8 +34,36 @@ source "$LIB_DIR/cli.sh"
 _load_config
 _init_messages
 
-# Argument Handling
-if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]] || [[ -z "$1" ]]; then
+# Signal Handling
+_cleanup() {
+    exit 0
+}
+trap _cleanup SIGINT SIGTERM
+
+# Global Argument Parsing
+QUIET_MODE=""
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -q|--quiet)
+      QUIET_MODE=1
+      shift
+      ;;
+    -h|--help)
+      _cmd_usage
+      exit 0
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Restore positional parameters
+set -- "${ARGS[@]}"
+
+if [[ -z "$1" ]]; then
     _cmd_usage
     exit 0
 fi
@@ -55,6 +83,7 @@ case "$CMD" in
     status)     _cmd_status ;;
     set)        _cmd_set "$@" ;;
     language)   _cmd_language "$@" ;;
+    config)     _cmd_config "$@" ;;
     autostart)  _cmd_autostart "$@" ;;
     sound)      _cmd_sound "$@" ;;
     help)       _cmd_usage ;;

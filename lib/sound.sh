@@ -46,34 +46,41 @@ _cmd_sound() {
 
     case "$subcmd" in
         list)
-            echo "$MSG_SOUND_LIST_HEADER"
-            echo "$MSG_SOUND_LIST_BUILTIN"
-            echo "$MSG_SOUND_LIST_ITEM_NONE"
-            echo "$MSG_SOUND_LIST_ITEM_DEFAULT"
-            echo "$MSG_SOUND_LIST_ITEM_BELL"
-            echo "$MSG_SOUND_LIST_ITEM_COMPLETE"
-            echo "$MSG_SOUND_LIST_ITEM_SUCCESS"
-            echo "$MSG_SOUND_LIST_ITEM_ALARM"
-            echo "$MSG_SOUND_LIST_ITEM_CAMERA"
-            echo "$MSG_SOUND_LIST_ITEM_DEVICE"
-            echo "$MSG_SOUND_LIST_ITEM_ATTENTION"
+            # Headers to stderr
+            echo "$MSG_SOUND_LIST_HEADER" >&2
+            echo "$MSG_SOUND_LIST_BUILTIN" >&2
             
-            echo ""
-            echo "$MSG_SOUND_LIST_CUSTOM"
+            # Data to stdout
+            msg_data "$MSG_SOUND_LIST_ITEM_NONE"
+            msg_data "$MSG_SOUND_LIST_ITEM_DEFAULT"
+            msg_data "$MSG_SOUND_LIST_ITEM_BELL"
+            msg_data "$MSG_SOUND_LIST_ITEM_COMPLETE"
+            msg_data "$MSG_SOUND_LIST_ITEM_SUCCESS"
+            msg_data "$MSG_SOUND_LIST_ITEM_ALARM"
+            msg_data "$MSG_SOUND_LIST_ITEM_CAMERA"
+            msg_data "$MSG_SOUND_LIST_ITEM_DEVICE"
+            msg_data "$MSG_SOUND_LIST_ITEM_ATTENTION"
+            
+            echo "" >&2
+            echo "$MSG_SOUND_LIST_CUSTOM" >&2
             local has_custom=0
             if [ -f "$CUSTOM_SOUNDS_MAP" ]; then
                 while IFS='=' read -r key value; do
                     if [[ $key == SOUND_PATH_* ]]; then
                         tag=${key#SOUND_PATH_}
-                        echo "  - $tag : $value"
+                        # Value contains quotes, remove them
+                        clean_val="${value%\"}"
+                        clean_val="${clean_val#\"}"
+                        msg_data "  - $tag : $clean_val"
                         has_custom=1
                     fi
                 done < "$CUSTOM_SOUNDS_MAP"
             fi
-            [ $has_custom -eq 0 ] && echo "$MSG_SOUND_LIST_NONE"
+            [ $has_custom -eq 0 ] && echo "$MSG_SOUND_LIST_NONE" >&2
             ;; 
         play)
             local tag=$1
+            [ -z "$tag" ] && tag=$(_read_input)
             [ -z "$tag" ] && { msg_error "$MSG_SOUND_PLAY_TAG_REQUIRED"; return 1; }
             local path=$(_get_sound_path "$tag")
             msg_info "$(printf "$MSG_SOUND_PLAY_PLAYING" "$tag" "$path")"
@@ -86,8 +93,10 @@ _cmd_sound() {
             fi
             ;; 
         set)
-            local s1=${1:-$SOUND_START}
-            local s2=${2:-$SOUND_END}
+            local input_str=$(_read_input "$@")
+            read -r s1 s2 <<< "$input_str"
+            s1=${s1:-$SOUND_START}
+            s2=${s2:-$SOUND_END}
             SOUND_START=$s1
             SOUND_END=$s2
             _save_config
@@ -96,6 +105,9 @@ _cmd_sound() {
         add)
             local tag=$1
             local path=$2
+            if [ -z "$tag" ]; then
+                read -r tag path <<< "$(_read_input)"
+            fi
             if [ -z "$tag" ] || [ -z "$path" ]; then
                 msg_error "$MSG_SOUND_ADD_USAGE"
                 return 1
@@ -108,18 +120,44 @@ _cmd_sound() {
                 msg_error "$(printf "$MSG_SOUND_ADD_ERROR_FILE" "$path")"
                 return 1
             fi
-            if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP" 2>/dev/null; then
-                printf "$MSG_SOUND_ADD_CONFIRM_REPLACE" "$tag"
-                read choice
-                [[ "$choice" != "y" && "$choice" != "Y" ]] && return
-            fi
+            
             local abs_path=$(readlink -f "$path")
+            
+            # Idempotency check
+            if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP" 2>/dev/null; then
+                # Extract existing path
+                existing_line=$(grep "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP")
+                existing_path="${existing_line#*=}"
+                existing_path="${existing_path%\"}"
+                existing_path="${existing_path#\"}"
+                
+                if [ "$existing_path" == "$abs_path" ]; then
+                    # Same path, silent success
+                    if [ "$EYE_MODE" == "unix" ] || [ -n "$QUIET_MODE" ]; then
+                        return 0
+                    else
+                        msg_warn "Sound tag '$tag' already points to '$abs_path'."
+                        return 0
+                    fi
+                fi
+                
+                # Different path, ask/overwrite
+                if [ -t 0 ]; then
+                    printf "$MSG_SOUND_ADD_CONFIRM_REPLACE" "$tag"
+                    read choice
+                    [[ "$choice" != "y" && "$choice" != "Y" ]] && return
+                else
+                    true # Overwrite if piped
+                fi
+            fi
+            
             [ -f "$CUSTOM_SOUNDS_MAP" ] && sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
             echo "SOUND_PATH_${tag}=\"${abs_path}\"" >> "$CUSTOM_SOUNDS_MAP"
             msg_success "$(printf "$MSG_SOUND_ADD_ADDED" "$tag")"
             ;; 
         rm)
             local tag=$1
+            [ -z "$tag" ] && tag=$(_read_input)
             if [ -z "$tag" ]; then
                 msg_error "$MSG_SOUND_RM_USAGE"
                 return 1
