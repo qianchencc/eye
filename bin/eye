@@ -20,6 +20,188 @@ DEFAULT_LOOK_AWAY=20
 DEFAULT_SOUND_START="default"
 DEFAULT_SOUND_END="complete"
 DEFAULT_SOUND_SWITCH="on"
+DEFAULT_LANGUAGE="en"
+
+# =================多语言支持 (Centralized Messages)=================
+_init_messages() {
+    # 优先使用配置文件中的 LANGUAGE，如果未设置则回退到系统 LANG，最后默认 en
+    if [[ "$LANGUAGE" == "zh" ]] || [[ "$LANGUAGE" == "Chinese" ]]; then
+        LANG_MODE="zh"
+    elif [[ "$LANGUAGE" == "en" ]] || [[ "$LANGUAGE" == "English" ]]; then
+        LANG_MODE="en"
+    elif [[ -z "$LANGUAGE" ]]; then
+        # 只有在未配置时才检测系统语言
+        if [[ "$LANG" == zh* ]]; then
+            LANG_MODE="zh"
+        else
+            LANG_MODE="en"
+        fi
+    else
+        LANG_MODE="en"
+    fi
+
+    if [ "$LANG_MODE" == "zh" ]; then
+        MSG_USAGE_HEADER="用法: eye <command> [args]"
+        MSG_USAGE_CORE="核心命令:"
+        MSG_USAGE_CMD_START="  start            启动护眼后台进程"
+        MSG_USAGE_CMD_STOP="  stop             停止护眼进程"
+        MSG_USAGE_CMD_PAUSE="  pause <time>     暂停护眼模式指定时长 (例如: 1h, 30m, 1h30m)"
+        MSG_USAGE_CMD_RESUME="  resume           取消暂停，立即恢复"
+        MSG_USAGE_CMD_STATUS="  status           查看当前状态"
+        MSG_USAGE_CMD_NOW="  now              立即执行一次护眼提醒"
+        MSG_USAGE_CMD_SET="  set <gap> <look> 设置时间间隔和远眺时长 (支持单位 s, m, h)\n                   例如: eye set 20m 20s"
+        MSG_USAGE_CMD_LANG="  language <lang>  设置语言 (English/Chinese)"
+        MSG_USAGE_AUDIO="音频管理 (eye sound ...):"
+        MSG_USAGE_CMD_SOUND_LIST="  sound list              列出所有可用音效"
+        MSG_USAGE_CMD_SOUND_PLAY="  sound play <tag>        试听指定标签的音效"
+        MSG_USAGE_CMD_SOUND_SET="  sound set <start> <end> 设置开始和结束的提示音"
+        MSG_USAGE_CMD_SOUND_ADD="  sound add <tag> <path>  添加自定义音频文件"
+        MSG_USAGE_CMD_SOUND_RM="  sound rm  <tag>         删除自定义音效"
+        MSG_USAGE_CMD_SOUND_SWITCH="  sound on|off            全局开启或关闭声音"
+        
+        MSG_START_ALREADY_RUNNING="⚠️  护眼模式已在运行中 (PID: %s)"
+        MSG_START_STARTED="✅ 护眼模式已启动"
+        MSG_STOP_STOPPED="🛑 已停止"
+        MSG_STOP_NOT_RUNNING="⚠️  未运行"
+        MSG_PAUSE_SPECIFY_DURATION="❌ 请指定时长 (如 1h, 30m)"
+        MSG_PAUSE_PAUSED="⏸️  护眼模式暂停 %s (直到 %s)"
+        MSG_PAUSE_ERROR_FORMAT="❌ 格式错误。示例: 1h, 30m, 10s"
+        MSG_RESUME_RESUMED="▶️  暂停已取消，恢复运行"
+        MSG_RESUME_NOT_PAUSED="⚠️  当前未处于暂停状态"
+        MSG_NOW_TRIGGERING="🔄 正在触发远眺..."
+        MSG_STATUS_RUNNING="🟢 运行中 | PID: %s"
+        MSG_STATUS_PAUSED_REMAINING="⏸️  [已暂停] 剩余: %s (直到 %s)"
+        MSG_STATUS_STOPPED="🔴 已停止"
+        MSG_STATUS_CONFIG="⚙️  配置: %s 间隔 / %s 远眺"
+        MSG_STATUS_LAST_REST="⏱️  上次休息: %s 前"
+        MSG_STATUS_SOUND="🔊 音效: [%s] -> [%s] (开关: %s)"
+        MSG_STATUS_LANG="🌐 语言: %s"
+        MSG_SET_USAGE_HINT="用法: eye set <间隔> <时长>\n示例: eye set 20m 20s"
+        MSG_SET_UPDATED="✅ 配置已更新: 间隔 %s, 远眺 %s"
+        MSG_LANG_UPDATED="✅ 语言已切换为: %s (Language switched to: %s)"
+        MSG_LANG_INVALID="❌ 无效的语言选项。请使用 'English' 或 'Chinese'。"
+        
+        MSG_SOUND_LIST_HEADER="🎵 可用音效列表："
+        MSG_SOUND_LIST_BUILTIN="  [内置] (不可删除)"
+        MSG_SOUND_LIST_CUSTOM="  [自定义]"
+        MSG_SOUND_LIST_NONE="  (无)"
+        MSG_SOUND_LIST_ITEM_NONE="  - none      : 静音"
+        MSG_SOUND_LIST_ITEM_DEFAULT="  - default   : 标准通知"
+        MSG_SOUND_LIST_ITEM_BELL="  - bell      : 清脆铃声"
+        MSG_SOUND_LIST_ITEM_COMPLETE="  - complete  : 任务完成"
+        MSG_SOUND_LIST_ITEM_SUCCESS="  - success   : 成功音"
+        MSG_SOUND_LIST_ITEM_ALARM="  - alarm     : 闹钟"
+        MSG_SOUND_LIST_ITEM_CAMERA="  - camera    : 快门声"
+        MSG_SOUND_LIST_ITEM_DEVICE="  - device    : 设备接入"
+        MSG_SOUND_LIST_ITEM_ATTENTION="  - attention : 提示音"
+        
+        MSG_SOUND_PLAY_TAG_REQUIRED="❌ 请指定标签"
+        MSG_SOUND_PLAY_PLAYING="▶️  试听 [%s] : %s"
+        MSG_SOUND_PLAY_MUTE="🔇 (静音)"
+        MSG_SOUND_PLAY_ERROR="❌ 文件不存在或无法播放"
+        MSG_SOUND_SET_UPDATED="✅ 音效已更新: 开始[%s] -> 结束[%s]"
+        MSG_SOUND_ADD_USAGE="❌ 用法: eye sound add <tag> <path>"
+        MSG_SOUND_ADD_ERROR_BUILTIN="❌ 错误: '%s' 是内置音效，无法覆盖。"
+        MSG_SOUND_ADD_ERROR_FILE="❌ 错误: 文件不存在: %s"
+        MSG_SOUND_ADD_CONFIRM_REPLACE="⚠️  标签 '%s' 已存在，是否替换？[y/N] "
+        MSG_SOUND_ADD_ADDED="✅ 已添加: %s"
+        MSG_SOUND_RM_USAGE="❌ 用法: eye sound rm <tag>"
+        MSG_SOUND_RM_ERROR_BUILTIN="❌ 错误: '%s' 是内置音效，不能删除。"
+        MSG_SOUND_RM_DELETED="🗑️  已删除音效: %s"
+        MSG_SOUND_RM_NOT_FOUND="⚠️  未找到自定义标签: %s"
+        MSG_SOUND_RM_NO_CUSTOM="⚠️  暂无自定义配置"
+        MSG_SOUND_ON="🔊 声音已开启"
+        MSG_SOUND_OFF="🔇 声音已关闭"
+        MSG_SOUND_USAGE="用法: eye sound [list|play|set|add|rm|on|off]"
+        
+        MSG_NOTIFY_TITLE_START="👀 护眼时间"
+        MSG_NOTIFY_BODY_START="开始远眺 %s！"
+        MSG_NOTIFY_TITLE_END="✅ 远眺结束"
+        MSG_NOTIFY_BODY_END="眼睛休息好了，继续加油吧！"
+        MSG_ERROR_INVALID_TIME_FORMAT="错误: 无效的时间格式"
+        
+    else
+        # English
+        MSG_USAGE_HEADER="Usage: eye <command> [args]"
+        MSG_USAGE_CORE="Core Commands:"
+        MSG_USAGE_CMD_START="  start            Start the eye protection daemon"
+        MSG_USAGE_CMD_STOP="  stop             Stop the eye protection daemon"
+        MSG_USAGE_CMD_PAUSE="  pause <time>     Pause for a specific duration (e.g., 1h, 30m, 1h30m)"
+        MSG_USAGE_CMD_RESUME="  resume           Resume from pause immediately"
+        MSG_USAGE_CMD_STATUS="  status           Show current status"
+        MSG_USAGE_CMD_NOW="  now              Trigger an eye break immediately"
+        MSG_USAGE_CMD_SET="  set <gap> <look> Set interval and look-away duration (units: s, m, h)\n                   Example: eye set 20m 20s"
+        MSG_USAGE_CMD_LANG="  language <lang>  Set language (English/Chinese)"
+        MSG_USAGE_AUDIO="Audio Management (eye sound ...):"
+        MSG_USAGE_CMD_SOUND_LIST="  sound list              List all available sounds"
+        MSG_USAGE_CMD_SOUND_PLAY="  sound play <tag>        Preview a specific sound"
+        MSG_USAGE_CMD_SOUND_SET="  sound set <start> <end> Set start and end sounds"
+        MSG_USAGE_CMD_SOUND_ADD="  sound add <tag> <path>  Add a custom audio file"
+        MSG_USAGE_CMD_SOUND_RM="  sound rm  <tag>         Remove a custom sound"
+        MSG_USAGE_CMD_SOUND_SWITCH="  sound on|off            Turn sound on or off globally"
+        
+        MSG_START_ALREADY_RUNNING="⚠️  Eye protection mode is already running (PID: %s)"
+        MSG_START_STARTED="✅ Eye protection mode started"
+        MSG_STOP_STOPPED="🛑 Stopped"
+        MSG_STOP_NOT_RUNNING="⚠️  Not running"
+        MSG_PAUSE_SPECIFY_DURATION="❌ Please specify duration (e.g., 1h, 30m)"
+        MSG_PAUSE_PAUSED="⏸️  Eye protection paused for %s (until %s)"
+        MSG_PAUSE_ERROR_FORMAT="❌ Invalid format. Example: 1h, 30m, 10s"
+        MSG_RESUME_RESUMED="▶️  Pause cancelled, resumed"
+        MSG_RESUME_NOT_PAUSED="⚠️  Not currently paused"
+        MSG_NOW_TRIGGERING="🔄 Triggering look-away..."
+        MSG_STATUS_RUNNING="🟢 Running | PID: %s"
+        MSG_STATUS_PAUSED_REMAINING="⏸️  [Paused] Remaining: %s (until %s)"
+        MSG_STATUS_STOPPED="🔴 Stopped"
+        MSG_STATUS_CONFIG="⚙️  Config: %s gap / %s look-away"
+        MSG_STATUS_LAST_REST="⏱️  Last rest: %s ago"
+        MSG_STATUS_SOUND="🔊 Sound: [%s] -> [%s] (Switch: %s)"
+        MSG_STATUS_LANG="🌐 Language: %s"
+        MSG_SET_USAGE_HINT="Usage: eye set <gap> <look>\nExample: eye set 20m 20s"
+        MSG_SET_UPDATED="✅ Config updated: Gap %s, Look-away %s"
+        MSG_LANG_UPDATED="✅ Language switched to: %s"
+        MSG_LANG_INVALID="❌ Invalid language option. Please use 'English' or 'Chinese'."
+        
+        MSG_SOUND_LIST_HEADER="🎵 Available Sounds:"
+        MSG_SOUND_LIST_BUILTIN="  [Built-in] (Cannot be removed)"
+        MSG_SOUND_LIST_CUSTOM="  [Custom]"
+        MSG_SOUND_LIST_NONE="  (None)"
+        MSG_SOUND_LIST_ITEM_NONE="  - none      : Mute"
+        MSG_SOUND_LIST_ITEM_DEFAULT="  - default   : Standard message"
+        MSG_SOUND_LIST_ITEM_BELL="  - bell      : Bell"
+        MSG_SOUND_LIST_ITEM_COMPLETE="  - complete  : Task complete"
+        MSG_SOUND_LIST_ITEM_SUCCESS="  - success   : Success"
+        MSG_SOUND_LIST_ITEM_ALARM="  - alarm     : Alarm clock"
+        MSG_SOUND_LIST_ITEM_CAMERA="  - camera    : Camera shutter"
+        MSG_SOUND_LIST_ITEM_DEVICE="  - device    : Device added"
+        MSG_SOUND_LIST_ITEM_ATTENTION="  - attention : Attention"
+        
+        MSG_SOUND_PLAY_TAG_REQUIRED="❌ Please specify a tag"
+        MSG_SOUND_PLAY_PLAYING="▶️  Previewing [%s] : %s"
+        MSG_SOUND_PLAY_MUTE="🔇 (Muted)"
+        MSG_SOUND_PLAY_ERROR="❌ File not found or cannot play"
+        MSG_SOUND_SET_UPDATED="✅ Sounds updated: Start[%s] -> End[%s]"
+        MSG_SOUND_ADD_USAGE="❌ Usage: eye sound add <tag> <path>"
+        MSG_SOUND_ADD_ERROR_BUILTIN="❌ Error: '%s' is a built-in sound, cannot overwrite."
+        MSG_SOUND_ADD_ERROR_FILE="❌ Error: File not found: %s"
+        MSG_SOUND_ADD_CONFIRM_REPLACE="⚠️  Tag '%s' already exists, replace? [y/N] "
+        MSG_SOUND_ADD_ADDED="✅ Added: %s"
+        MSG_SOUND_RM_USAGE="❌ Usage: eye sound rm <tag>"
+        MSG_SOUND_RM_ERROR_BUILTIN="❌ Error: '%s' is a built-in sound, cannot remove."
+        MSG_SOUND_RM_DELETED="🗑️  Deleted sound: %s"
+        MSG_SOUND_RM_NOT_FOUND="⚠️  Custom tag not found: %s"
+        MSG_SOUND_RM_NO_CUSTOM="⚠️  No custom configuration"
+        MSG_SOUND_ON="🔊 Sound enabled"
+        MSG_SOUND_OFF="🔇 Sound disabled"
+        MSG_SOUND_USAGE="Usage: eye sound [list|play|set|add|rm|on|off]"
+        
+        MSG_NOTIFY_TITLE_START="👀 Eye Protection"
+        MSG_NOTIFY_BODY_START="Look away for %s!"
+        MSG_NOTIFY_TITLE_END="✅ Break Ended"
+        MSG_NOTIFY_BODY_END="Eyes rested. Keep going!"
+        MSG_ERROR_INVALID_TIME_FORMAT="Error: Invalid time format"
+    fi
+}
 
 # =================核心功能函数=================
 
@@ -55,7 +237,7 @@ _parse_duration() {
     fi
 
     if [ "$total_seconds" -eq 0 ]; then
-        echo "Error: Invalid time format" >&2
+        echo "$MSG_ERROR_INVALID_TIME_FORMAT" >&2
         return 1
     fi
     
@@ -85,9 +267,19 @@ LOOK_AWAY=$DEFAULT_LOOK_AWAY
 SOUND_START=$DEFAULT_SOUND_START
 SOUND_END=$DEFAULT_SOUND_END
 SOUND_SWITCH=$DEFAULT_SOUND_SWITCH
+LANGUAGE=$DEFAULT_LANGUAGE
 EOF
     fi
     source "$CONFIG_FILE"
+    
+    # 确保变量有默认值 (防止旧配置文件缺失新变量)
+    REST_GAP=${REST_GAP:-$DEFAULT_REST_GAP}
+    LOOK_AWAY=${LOOK_AWAY:-$DEFAULT_LOOK_AWAY}
+    SOUND_START=${SOUND_START:-$DEFAULT_SOUND_START}
+    SOUND_END=${SOUND_END:-$DEFAULT_SOUND_END}
+    SOUND_SWITCH=${SOUND_SWITCH:-$DEFAULT_SOUND_SWITCH}
+    LANGUAGE=${LANGUAGE:-$DEFAULT_LANGUAGE}
+
     [ -f "$CUSTOM_SOUNDS_MAP" ] && source "$CUSTOM_SOUNDS_MAP"
 }
 
@@ -99,6 +291,7 @@ LOOK_AWAY=${LOOK_AWAY:-$DEFAULT_LOOK_AWAY}
 SOUND_START=${SOUND_START:-$DEFAULT_SOUND_START}
 SOUND_END=${SOUND_END:-$DEFAULT_SOUND_END}
 SOUND_SWITCH=${SOUND_SWITCH:-$DEFAULT_SOUND_SWITCH}
+LANGUAGE=${LANGUAGE:-$DEFAULT_LANGUAGE}
 EOF
 }
 
@@ -143,12 +336,20 @@ _play() {
 
 _eye_action() {
     _load_config
-    notify-send -i appointment-soon -t 5000 "👀 护眼时间" "开始远眺 $(_format_duration ${LOOK_AWAY})！"
+    # 注意：后台进程的环境变量可能不同，所以需要在 action 内部重新初始化消息 (或确保 LANG 传递)
+    # 这里简单起见再次调用初始化
+    _init_messages
+    
+    local look_fmt=$(_format_duration ${LOOK_AWAY})
+    # 使用 printf 格式化消息
+    local body_start=$(printf "$MSG_NOTIFY_BODY_START" "$look_fmt")
+    
+    notify-send -i appointment-soon -t 5000 "$MSG_NOTIFY_TITLE_START" "$body_start"
     _play "$SOUND_START"
     
     sleep "$LOOK_AWAY"
     
-    notify-send -i emblem-success -t 3000 "✅ 远眺结束" "眼睛休息好了，继续加油吧！"
+    notify-send -i emblem-success -t 3000 "$MSG_NOTIFY_TITLE_END" "$MSG_NOTIFY_BODY_END"
     _play "$SOUND_END"
     
     date +%s > "$EYE_LOG"
@@ -157,28 +358,26 @@ _eye_action() {
 # =================命令处理逻辑=================
 
 _usage() {
-    cat <<EOF
-用法: eye <command> [args]
-
-核心命令:
-  start            启动护眼后台进程
-  stop             停止护眼进程
-  pause <time>     暂停护眼模式指定时长 (例如: 1h, 30m, 1h30m)
-  resume           取消暂停，立即恢复
-  status           查看当前状态
-  now              立即执行一次护眼提醒
-  set <gap> <look> 设置时间间隔和远眺时长 (支持单位 s, m, h)
-                   例如: eye set 20m 20s
-
-音频管理 (eye sound ...):
-  sound list              列出所有可用音效
-  sound play <tag>        试听指定标签的音效
-  sound set <start> <end> 设置开始和结束的提示音
-  sound add <tag> <path>  添加自定义音频文件
-  sound rm  <tag>         删除自定义音效
-  sound on|off            全局开启或关闭声音
-
-EOF
+    # 这里的打印逻辑也要调整
+    echo "$MSG_USAGE_HEADER"
+    echo ""
+    echo "$MSG_USAGE_CORE"
+    echo "$MSG_USAGE_CMD_START"
+    echo "$MSG_USAGE_CMD_STOP"
+    echo "$MSG_USAGE_CMD_PAUSE"
+    echo "$MSG_USAGE_CMD_RESUME"
+    echo "$MSG_USAGE_CMD_STATUS"
+    echo "$MSG_USAGE_CMD_NOW"
+    echo -e "$MSG_USAGE_CMD_SET"
+    echo "$MSG_USAGE_CMD_LANG"
+    echo ""
+    echo "$MSG_USAGE_AUDIO"
+    echo "$MSG_USAGE_CMD_SOUND_LIST"
+    echo "$MSG_USAGE_CMD_SOUND_PLAY"
+    echo "$MSG_USAGE_CMD_SOUND_SET"
+    echo "$MSG_USAGE_CMD_SOUND_ADD"
+    echo "$MSG_USAGE_CMD_SOUND_RM"
+    echo "$MSG_USAGE_CMD_SOUND_SWITCH"
 }
 
 _cmd_sound() {
@@ -188,19 +387,20 @@ _cmd_sound() {
 
     case "$subcmd" in
         list)
-            echo "🎵 可用音效列表："
-            echo "  [内置] (不可删除)"
-            echo "  - none      : 静音"
-            echo "  - default   : 标准通知"
-            echo "  - bell      : 清脆铃声"
-            echo "  - complete  : 任务完成"
-            echo "  - success   : 成功音"
-            echo "  - alarm     : 闹钟"
-            echo "  - camera    : 快门声"
-            echo "  - device    : 设备接入"
-            echo "  - attention : 提示音"
+            echo "$MSG_SOUND_LIST_HEADER"
+            echo "$MSG_SOUND_LIST_BUILTIN"
+            echo "$MSG_SOUND_LIST_ITEM_NONE"
+            echo "$MSG_SOUND_LIST_ITEM_DEFAULT"
+            echo "$MSG_SOUND_LIST_ITEM_BELL"
+            echo "$MSG_SOUND_LIST_ITEM_COMPLETE"
+            echo "$MSG_SOUND_LIST_ITEM_SUCCESS"
+            echo "$MSG_SOUND_LIST_ITEM_ALARM"
+            echo "$MSG_SOUND_LIST_ITEM_CAMERA"
+            echo "$MSG_SOUND_LIST_ITEM_DEVICE"
+            echo "$MSG_SOUND_LIST_ITEM_ATTENTION"
             
-            echo "  [自定义]"
+            echo ""
+            echo "$MSG_SOUND_LIST_CUSTOM"
             local has_custom=0
             if [ -f "$CUSTOM_SOUNDS_MAP" ]; then
                 while IFS='=' read -r key value; do
@@ -211,19 +411,19 @@ _cmd_sound() {
                     fi
                 done < "$CUSTOM_SOUNDS_MAP"
             fi
-            [ $has_custom -eq 0 ] && echo "  (无)"
+            [ $has_custom -eq 0 ] && echo "$MSG_SOUND_LIST_NONE"
             ;; 
         play)
             local tag=$1
-            [ -z "$tag" ] && { echo "❌ 请指定标签"; return 1; }
+            [ -z "$tag" ] && { echo "$MSG_SOUND_PLAY_TAG_REQUIRED"; return 1; }
             local path=$(_get_sound_path "$tag")
-            echo "▶️  试听 [$tag] : $path"
+            printf "$MSG_SOUND_PLAY_PLAYING\n" "$tag" "$path"
             if [ -f "$path" ]; then
                 command -v paplay >/dev/null && paplay "$path"
             elif [ "$tag" == "none" ]; then
-                echo "🔇 (静音)"
+                echo "$MSG_SOUND_PLAY_MUTE"
             else
-                echo "❌ 文件不存在或无法播放"
+                echo "$MSG_SOUND_PLAY_ERROR"
             fi
             ;; 
         set)
@@ -232,62 +432,70 @@ _cmd_sound() {
             SOUND_START=$s1
             SOUND_END=$s2
             _save_config
-            echo "✅ 音效已更新: 开始[$s1] -> 结束[$s2]"
+            printf "$MSG_SOUND_SET_UPDATED\n" "$s1" "$s2"
             ;; 
         add)
             local tag=$1
             local path=$2
             if [ -z "$tag" ] || [ -z "$path" ]; then
-                echo "❌ 用法: eye sound add <tag> <path>"
+                echo "$MSG_SOUND_ADD_USAGE"
                 return 1
             fi
             if [[ " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
-                 echo "❌ 错误: '$tag' 是内置音效，无法覆盖。"
+                 printf "$MSG_SOUND_ADD_ERROR_BUILTIN\n" "$tag"
                  return 1
             fi
             if [ ! -f "$path" ]; then
-                echo "❌ 错误: 文件不存在: $path"
+                printf "$MSG_SOUND_ADD_ERROR_FILE\n" "$path"
                 return 1
             fi
             if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP" 2>/dev/null; then
-                read -p "⚠️  标签 '$tag' 已存在，是否替换？[y/N] " choice
+                # printf "$MSG_SOUND_ADD_CONFIRM_REPLACE" "$tag"
+                # read -p can't easily use variable for prompt if it has %s, so print first
+                printf "$MSG_SOUND_ADD_CONFIRM_REPLACE" "$tag"
+                read choice
                 [[ "$choice" != "y" && "$choice" != "Y" ]] && return
             fi
             local abs_path=$(readlink -f "$path")
             [ -f "$CUSTOM_SOUNDS_MAP" ] && sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
             echo "SOUND_PATH_${tag}=\"${abs_path}\"" >> "$CUSTOM_SOUNDS_MAP"
-            echo "✅ 已添加: $tag"
+            printf "$MSG_SOUND_ADD_ADDED\n" "$tag"
             ;; 
         rm)
             local tag=$1
             if [ -z "$tag" ]; then
-                echo "❌ 用法: eye sound rm <tag>"
+                echo "$MSG_SOUND_RM_USAGE"
                 return 1
             fi
             if [[ " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
-                 echo "❌ 错误: '$tag' 是内置音效，不能删除。"
+                 printf "$MSG_SOUND_RM_ERROR_BUILTIN\n" "$tag"
                  return 1
             fi
             if [ -f "$CUSTOM_SOUNDS_MAP" ]; then
                 if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP"; then
                     sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
-                    echo "🗑️  已删除音效: $tag"
+                    printf "$MSG_SOUND_RM_DELETED\n" "$tag"
                 else
-                    echo "⚠️  未找到自定义标签: $tag"
+                    printf "$MSG_SOUND_RM_NOT_FOUND\n" "$tag"
                 fi
             else
-                echo "⚠️  暂无自定义配置"
+                echo "$MSG_SOUND_RM_NO_CUSTOM"
             fi
             ;; 
         on)
-            SOUND_SWITCH="on"; _save_config; echo "🔊 声音已开启" ;; 
+            SOUND_SWITCH="on"; _save_config; echo "$MSG_SOUND_ON" ;; 
         off)
-            SOUND_SWITCH="off"; _save_config; echo "🔇 声音已关闭" ;; 
+            SOUND_SWITCH="off"; _save_config; echo "$MSG_SOUND_OFF" ;; 
         *)
-            echo "用法: eye sound [list|play|set|add|rm|on|off]" ;; 
+            echo "$MSG_SOUND_USAGE" ;; 
     esac
 }
 # =================主程序入口=================
+
+# 必须先加载配置才能获取 LANGUAGE 变量
+_load_config
+# 初始化语言
+_init_messages
 
 # 处理 --help
 if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]] || [[ -z "$1" ]]; then
@@ -298,13 +506,16 @@ fi
 case "$1" in
     start)
         if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-            echo "⚠️  护眼模式已在运行中 (PID: $(cat "$PID_FILE"))"
+            printf "$MSG_START_ALREADY_RUNNING\n" "$(cat "$PID_FILE")"
         else
             (
                 echo $BASHPID > "$PID_FILE"
                 date +%s > "$EYE_LOG"
                 while true; do
                     _load_config
+                    # 守护进程中每次循环都初始化一下消息，以防万一（虽然通常不需要，但为了 safety）
+                    _init_messages
+                    
                     current_time=$(date +%s)
                     
                     # 检查是否暂停
@@ -320,14 +531,14 @@ case "$1" in
 
                     last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
                     if [ $((current_time - last_time)) -ge $REST_GAP ]; then
-                         _eye_action &
+                         _eye_action & 
                          wait $!
                     fi
                     sleep 5
                 done
             ) > /dev/null 2>&1 &
             disown
-            echo "✅ 护眼模式已启动"
+            echo "$MSG_START_STARTED"
         fi
         ;; 
     stop)
@@ -336,42 +547,42 @@ case "$1" in
             kill $(cat "$PID_FILE") >/dev/null 2>&1
             rm "$PID_FILE" 2>/dev/null
             rm "$PAUSE_FILE" 2>/dev/null
-            echo "🛑 已停止"
+            echo "$MSG_STOP_STOPPED"
         else
-            echo "⚠️  未运行"
+            echo "$MSG_STOP_NOT_RUNNING"
         fi
         ;; 
     pause)
         duration_str="$*"
-        [ -z "$duration_str" ] && { echo "❌ 请指定时长 (如 1h, 30m)"; exit 1; }
+        [ -z "$duration_str" ] && { echo "$MSG_PAUSE_SPECIFY_DURATION"; exit 1; }
         seconds=$(_parse_duration "$duration_str")
         if [ $? -eq 0 ]; then
             target_time=$(( $(date +%s) + seconds ))
             echo "$target_time" > "$PAUSE_FILE"
             formatted_dur=$(_format_duration "$seconds")
             target_date=$(date -d "@$target_time" "+%H:%M:%S")
-            echo "⏸️  护眼模式暂停 $formatted_dur (直到 $target_date)"
+            printf "$MSG_PAUSE_PAUSED\n" "$formatted_dur" "$target_date"
         else
-             echo "❌ 格式错误。示例: 1h, 30m, 10s"
+             echo "$MSG_PAUSE_ERROR_FORMAT"
         fi
         ;; 
     resume)
         if [ -f "$PAUSE_FILE" ]; then
             rm "$PAUSE_FILE"
-            echo "▶️  暂停已取消，恢复运行"
+            echo "$MSG_RESUME_RESUMED"
         else
-            echo "⚠️  当前未处于暂停状态"
+            echo "$MSG_RESUME_NOT_PAUSED"
         fi
         ;; 
     now)
-        echo "🔄 正在触发远眺..."
+        echo "$MSG_NOW_TRIGGERING"
         ( _eye_action ) > /dev/null 2>&1 & 
         disown
         ;; 
     status)
         if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
             _load_config
-            echo "🟢 运行中 | PID: $(cat "$PID_FILE")"
+            printf "$MSG_STATUS_RUNNING\n" "$(cat "$PID_FILE")"
             
             # 显示暂停状态
             if [ -f "$PAUSE_FILE" ]; then
@@ -380,7 +591,7 @@ case "$1" in
                 if [ "$current" -lt "$pause_until" ]; then
                     remaining=$((pause_until - current))
                     target_date=$(date -d "@$pause_until" "+%H:%M:%S")
-                    echo "⏸️  [已暂停] 剩余: $(_format_duration $remaining) (直到 $target_date)"
+                    printf "$MSG_STATUS_PAUSED_REMAINING\n" "$(_format_duration $remaining)" "$target_date"
                 else
                     rm "$PAUSE_FILE" # 清理过期文件
                 fi
@@ -390,35 +601,28 @@ case "$1" in
             diff=$(( $(date +%s) - last ))
             gap_fmt=$(_format_duration $REST_GAP)
             look_fmt=$(_format_duration $LOOK_AWAY)
-            echo "⚙️  配置: ${gap_fmt} 间隔 / ${look_fmt} 远眺"
-            echo "⏱️  上次休息: $(_format_duration $diff) 前"
-            echo "🔊 音效: [$SOUND_START] -> [$SOUND_END] (开关: $SOUND_SWITCH)"
+            printf "$MSG_STATUS_CONFIG\n" "$gap_fmt" "$look_fmt"
+            printf "$MSG_STATUS_LAST_REST\n" "$(_format_duration $diff)"
+            printf "$MSG_STATUS_SOUND\n" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH"
+            printf "$MSG_STATUS_LANG\n" "$LANGUAGE"
         else
-            echo "🔴 已停止"
+            echo "$MSG_STATUS_STOPPED"
         fi
         ;; 
     set)
         if [ -z "$2" ]; then
-            echo "用法: eye set <间隔> <时长>"
-            echo "示例: eye set 20m 20s"
+            echo -e "$MSG_SET_USAGE_HINT"
             exit 1
         fi
-        
-        # 提取参数
-        # 假设 $2 是第一个时间参数，$3 是第二个(可选，默认为旧值)
-        # 但是这里用户可能输入 "eye set 20m 20s"，$2=20m, $3=20s
-        # 用户也可能输入 "eye set 1h30m 30s"
         
         gap_input=$2
         look_input=$3
         
         _load_config
         
-        # 解析间隔
         new_gap=$(_parse_duration "$gap_input")
         [ $? -ne 0 ] && exit 1
         
-        # 解析时长 (如果未提供，保持原样，或者从配置中读取)
         if [ -n "$look_input" ]; then
             new_look=$(_parse_duration "$look_input")
             [ $? -ne 0 ] && exit 1
@@ -430,8 +634,22 @@ case "$1" in
         LOOK_AWAY=$new_look
         _save_config
         
-        echo "✅ 配置已更新: 间隔 $(_format_duration $REST_GAP), 远眺 $(_format_duration $LOOK_AWAY)"
+        printf "$MSG_SET_UPDATED\n" "$(_format_duration $REST_GAP)" "$(_format_duration $LOOK_AWAY)"
         ;; 
+    language)
+        lang_input=$2
+        if [[ "$lang_input" == "en" ]] || [[ "$lang_input" == "English" ]]; then
+            LANGUAGE="en"
+        elif [[ "$lang_input" == "zh" ]] || [[ "$lang_input" == "Chinese" ]]; then
+            LANGUAGE="zh"
+        else
+            echo "$MSG_LANG_INVALID"
+            exit 1
+        fi
+        _save_config
+        _init_messages # 重新初始化以显示正确语言的提示
+        printf "$MSG_LANG_UPDATED\n" "$LANGUAGE" "$LANGUAGE"
+        ;;
     sound)
         shift
         _cmd_sound "$@"
