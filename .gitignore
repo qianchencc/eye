@@ -1,0 +1,11 @@
+# 忽略系统自动生成的文件
+.DS_Store
+
+# 忽略个人配置 (只保留 default.conf 模板)
+config/config
+config/custom_sounds.map
+
+# 忽略运行时产生的状态文件
+*.pid
+*.log
+last_notified

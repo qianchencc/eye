@@ -1,0 +1,445 @@
+#!/bin/bash
+
+# =================配置与路径定义 (XDG准则)=================
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/eye"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/eye"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/eye"
+
+CONFIG_FILE="$CONFIG_DIR/config"
+CUSTOM_SOUNDS_MAP="$CONFIG_DIR/custom_sounds.map"
+EYE_LOG="$STATE_DIR/last_notified"
+PID_FILE="$STATE_DIR/daemon.pid"
+PAUSE_FILE="$STATE_DIR/pause_until"
+
+# 确保目录存在
+mkdir -p "$CONFIG_DIR" "$DATA_DIR/sounds" "$STATE_DIR"
+
+# 默认配置
+DEFAULT_REST_GAP=1200
+DEFAULT_LOOK_AWAY=20
+DEFAULT_SOUND_START="default"
+DEFAULT_SOUND_END="complete"
+DEFAULT_SOUND_SWITCH="on"
+
+# =================核心功能函数=================
+
+# 时间解析函数 (支持 1h 30m 20s 格式)
+_parse_duration() {
+    local input="$*"
+    # 移除所有空格
+    input="${input// /}"
+    
+    # 如果是纯数字，默认为秒
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        echo "$input"
+        return
+    fi
+
+    local total_seconds=0
+    
+    # 提取天 (d)
+    if [[ "$input" =~ ([0-9]+)d ]]; then
+        total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 86400))
+    fi
+    # 提取小时 (h)
+    if [[ "$input" =~ ([0-9]+)h ]]; then
+        total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 3600))
+    fi
+    # 提取分钟 (m)
+    if [[ "$input" =~ ([0-9]+)m ]]; then
+        total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 60))
+    fi
+    # 提取秒 (s)
+    if [[ "$input" =~ ([0-9]+)s ]]; then
+        total_seconds=$((total_seconds + ${BASH_REMATCH[1]}))
+    fi
+
+    if [ "$total_seconds" -eq 0 ]; then
+        echo "Error: Invalid time format" >&2
+        return 1
+    fi
+    
+    echo "$total_seconds"
+}
+
+# 格式化秒数为易读格式
+_format_duration() {
+    local T=$1
+    local D=$((T/60/60/24))
+    local H=$((T/60/60%24))
+    local M=$((T/60%60))
+    local S=$((T%60))
+    
+    [[ $D -gt 0 ]] && printf '%dd ' $D
+    [[ $H -gt 0 ]] && printf '%dh ' $H
+    [[ $M -gt 0 ]] && printf '%dm ' $M
+    [[ $D -eq 0 && $H -eq 0 && $M -eq 0 ]] && printf '%ds' $S || printf '%ds' $S
+}
+
+# 加载配置
+_load_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        cat > "$CONFIG_FILE" <<EOF
+REST_GAP=$DEFAULT_REST_GAP
+LOOK_AWAY=$DEFAULT_LOOK_AWAY
+SOUND_START=$DEFAULT_SOUND_START
+SOUND_END=$DEFAULT_SOUND_END
+SOUND_SWITCH=$DEFAULT_SOUND_SWITCH
+EOF
+    fi
+    source "$CONFIG_FILE"
+    [ -f "$CUSTOM_SOUNDS_MAP" ] && source "$CUSTOM_SOUNDS_MAP"
+}
+
+# 保存基础配置
+_save_config() {
+    cat > "$CONFIG_FILE" <<EOF
+REST_GAP=${REST_GAP:-$DEFAULT_REST_GAP}
+LOOK_AWAY=${LOOK_AWAY:-$DEFAULT_LOOK_AWAY}
+SOUND_START=${SOUND_START:-$DEFAULT_SOUND_START}
+SOUND_END=${SOUND_END:-$DEFAULT_SOUND_END}
+SOUND_SWITCH=${SOUND_SWITCH:-$DEFAULT_SOUND_SWITCH}
+EOF
+}
+
+# 获取音效路径
+_get_sound_path() {
+    local tag=$1
+    local path=""
+    
+    case "$tag" in
+        "none")      echo "NONE"; return ;; 
+        "default")   path="/usr/share/sounds/freedesktop/stereo/message.oga" ;; 
+        "bell")      path="/usr/share/sounds/freedesktop/stereo/bell.oga" ;; 
+        "complete")  path="/usr/share/sounds/freedesktop/stereo/complete.oga" ;; 
+        "success")   path="/usr/share/sounds/freedesktop/stereo/service-login.oga" ;; 
+        "alarm")     path="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga" ;; 
+        "camera")    path="/usr/share/sounds/freedesktop/stereo/camera-shutter.oga" ;; 
+        "device")    path="/usr/share/sounds/freedesktop/stereo/device-added.oga" ;; 
+        "attention") path="/usr/share/sounds/freedesktop/stereo/window-attention.oga" ;; 
+        *)
+            local custom_var="SOUND_PATH_${tag}"
+            path="${!custom_var}" 
+            ;; 
+    esac
+
+    if [ ! -f "$path" ]; then
+         path="/usr/share/sounds/freedesktop/stereo/message.oga"
+    fi
+    echo "$path"
+}
+
+_play() {
+    [ "$SOUND_SWITCH" != "on" ] && return
+    local tag=$1
+    local file=$(_get_sound_path "$tag")
+    
+    if [ "$file" == "NONE" ]; then
+        return
+    elif [ -f "$file" ] && command -v paplay > /dev/null; then
+        paplay "$file" > /dev/null 2>&1 &
+    fi
+}
+
+_eye_action() {
+    _load_config
+    notify-send -i appointment-soon -t 5000 "👀 护眼时间" "开始远眺 $(_format_duration ${LOOK_AWAY})！"
+    _play "$SOUND_START"
+    
+    sleep "$LOOK_AWAY"
+    
+    notify-send -i emblem-success -t 3000 "✅ 远眺结束" "眼睛休息好了，继续加油吧！"
+    _play "$SOUND_END"
+    
+    date +%s > "$EYE_LOG"
+}
+
+# =================命令处理逻辑=================
+
+_usage() {
+    cat <<EOF
+用法: eye <command> [args]
+
+核心命令:
+  start            启动护眼后台进程
+  stop             停止护眼进程
+  pause <time>     暂停护眼模式指定时长 (例如: 1h, 30m, 1h30m)
+  resume           取消暂停，立即恢复
+  status           查看当前状态
+  now              立即执行一次护眼提醒
+  set <gap> <look> 设置时间间隔和远眺时长 (支持单位 s, m, h)
+                   例如: eye set 20m 20s
+
+音频管理 (eye sound ...):
+  sound list              列出所有可用音效
+  sound play <tag>        试听指定标签的音效
+  sound set <start> <end> 设置开始和结束的提示音
+  sound add <tag> <path>  添加自定义音频文件
+  sound rm  <tag>         删除自定义音效
+  sound on|off            全局开启或关闭声音
+
+EOF
+}
+
+_cmd_sound() {
+    local subcmd=$1
+    shift
+    _load_config
+
+    case "$subcmd" in
+        list)
+            echo "🎵 可用音效列表："
+            echo "  [内置] (不可删除)"
+            echo "  - none      : 静音"
+            echo "  - default   : 标准通知"
+            echo "  - bell      : 清脆铃声"
+            echo "  - complete  : 任务完成"
+            echo "  - success   : 成功音"
+            echo "  - alarm     : 闹钟"
+            echo "  - camera    : 快门声"
+            echo "  - device    : 设备接入"
+            echo "  - attention : 提示音"
+            
+            echo "  [自定义]"
+            local has_custom=0
+            if [ -f "$CUSTOM_SOUNDS_MAP" ]; then
+                while IFS='=' read -r key value; do
+                    if [[ $key == SOUND_PATH_* ]]; then
+                        tag=${key#SOUND_PATH_}
+                        echo "  - $tag : $value"
+                        has_custom=1
+                    fi
+                done < "$CUSTOM_SOUNDS_MAP"
+            fi
+            [ $has_custom -eq 0 ] && echo "  (无)"
+            ;; 
+        play)
+            local tag=$1
+            [ -z "$tag" ] && { echo "❌ 请指定标签"; return 1; }
+            local path=$(_get_sound_path "$tag")
+            echo "▶️  试听 [$tag] : $path"
+            if [ -f "$path" ]; then
+                command -v paplay >/dev/null && paplay "$path"
+            elif [ "$tag" == "none" ]; then
+                echo "🔇 (静音)"
+            else
+                echo "❌ 文件不存在或无法播放"
+            fi
+            ;; 
+        set)
+            local s1=${1:-$SOUND_START}
+            local s2=${2:-$SOUND_END}
+            SOUND_START=$s1
+            SOUND_END=$s2
+            _save_config
+            echo "✅ 音效已更新: 开始[$s1] -> 结束[$s2]"
+            ;; 
+        add)
+            local tag=$1
+            local path=$2
+            if [ -z "$tag" ] || [ -z "$path" ]; then
+                echo "❌ 用法: eye sound add <tag> <path>"
+                return 1
+            fi
+            if [[ " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
+                 echo "❌ 错误: '$tag' 是内置音效，无法覆盖。"
+                 return 1
+            fi
+            if [ ! -f "$path" ]; then
+                echo "❌ 错误: 文件不存在: $path"
+                return 1
+            fi
+            if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP" 2>/dev/null; then
+                read -p "⚠️  标签 '$tag' 已存在，是否替换？[y/N] " choice
+                [[ "$choice" != "y" && "$choice" != "Y" ]] && return
+            fi
+            local abs_path=$(readlink -f "$path")
+            [ -f "$CUSTOM_SOUNDS_MAP" ] && sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
+            echo "SOUND_PATH_${tag}=\"${abs_path}\"" >> "$CUSTOM_SOUNDS_MAP"
+            echo "✅ 已添加: $tag"
+            ;; 
+        rm)
+            local tag=$1
+            if [ -z "$tag" ]; then
+                echo "❌ 用法: eye sound rm <tag>"
+                return 1
+            fi
+            if [[ " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
+                 echo "❌ 错误: '$tag' 是内置音效，不能删除。"
+                 return 1
+            fi
+            if [ -f "$CUSTOM_SOUNDS_MAP" ]; then
+                if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP"; then
+                    sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
+                    echo "🗑️  已删除音效: $tag"
+                else
+                    echo "⚠️  未找到自定义标签: $tag"
+                fi
+            else
+                echo "⚠️  暂无自定义配置"
+            fi
+            ;; 
+        on)
+            SOUND_SWITCH="on"; _save_config; echo "🔊 声音已开启" ;; 
+        off)
+            SOUND_SWITCH="off"; _save_config; echo "🔇 声音已关闭" ;; 
+        *)
+            echo "用法: eye sound [list|play|set|add|rm|on|off]" ;; 
+    esac
+}
+# =================主程序入口=================
+
+# 处理 --help
+if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]] || [[ -z "$1" ]]; then
+    _usage
+    exit 0
+fi
+
+case "$1" in
+    start)
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+            echo "⚠️  护眼模式已在运行中 (PID: $(cat "$PID_FILE"))"
+        else
+            (
+                echo $BASHPID > "$PID_FILE"
+                date +%s > "$EYE_LOG"
+                while true; do
+                    _load_config
+                    current_time=$(date +%s)
+                    
+                    # 检查是否暂停
+                    if [ -f "$PAUSE_FILE" ]; then
+                        pause_until=$(cat "$PAUSE_FILE")
+                        if [ "$current_time" -lt "$pause_until" ]; then
+                             sleep 5
+                             continue
+                        else
+                             rm "$PAUSE_FILE" # 暂停过期
+                        fi
+                    fi
+
+                    last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+                    if [ $((current_time - last_time)) -ge $REST_GAP ]; then
+                         _eye_action &
+                         wait $!
+                    fi
+                    sleep 5
+                done
+            ) > /dev/null 2>&1 &
+            disown
+            echo "✅ 护眼模式已启动"
+        fi
+        ;; 
+    stop)
+        if [ -f "$PID_FILE" ]; then
+            pkill -P $(cat "$PID_FILE") >/dev/null 2>&1
+            kill $(cat "$PID_FILE") >/dev/null 2>&1
+            rm "$PID_FILE" 2>/dev/null
+            rm "$PAUSE_FILE" 2>/dev/null
+            echo "🛑 已停止"
+        else
+            echo "⚠️  未运行"
+        fi
+        ;; 
+    pause)
+        duration_str="$*"
+        [ -z "$duration_str" ] && { echo "❌ 请指定时长 (如 1h, 30m)"; exit 1; }
+        seconds=$(_parse_duration "$duration_str")
+        if [ $? -eq 0 ]; then
+            target_time=$(( $(date +%s) + seconds ))
+            echo "$target_time" > "$PAUSE_FILE"
+            formatted_dur=$(_format_duration "$seconds")
+            target_date=$(date -d "@$target_time" "+%H:%M:%S")
+            echo "⏸️  护眼模式暂停 $formatted_dur (直到 $target_date)"
+        else
+             echo "❌ 格式错误。示例: 1h, 30m, 10s"
+        fi
+        ;; 
+    resume)
+        if [ -f "$PAUSE_FILE" ]; then
+            rm "$PAUSE_FILE"
+            echo "▶️  暂停已取消，恢复运行"
+        else
+            echo "⚠️  当前未处于暂停状态"
+        fi
+        ;; 
+    now)
+        echo "🔄 正在触发远眺..."
+        ( _eye_action ) > /dev/null 2>&1 & 
+        disown
+        ;; 
+    status)
+        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+            _load_config
+            echo "🟢 运行中 | PID: $(cat "$PID_FILE")"
+            
+            # 显示暂停状态
+            if [ -f "$PAUSE_FILE" ]; then
+                pause_until=$(cat "$PAUSE_FILE")
+                current=$(date +%s)
+                if [ "$current" -lt "$pause_until" ]; then
+                    remaining=$((pause_until - current))
+                    target_date=$(date -d "@$pause_until" "+%H:%M:%S")
+                    echo "⏸️  [已暂停] 剩余: $(_format_duration $remaining) (直到 $target_date)"
+                else
+                    rm "$PAUSE_FILE" # 清理过期文件
+                fi
+            fi
+            
+            last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+            diff=$(( $(date +%s) - last ))
+            gap_fmt=$(_format_duration $REST_GAP)
+            look_fmt=$(_format_duration $LOOK_AWAY)
+            echo "⚙️  配置: ${gap_fmt} 间隔 / ${look_fmt} 远眺"
+            echo "⏱️  上次休息: $(_format_duration $diff) 前"
+            echo "🔊 音效: [$SOUND_START] -> [$SOUND_END] (开关: $SOUND_SWITCH)"
+        else
+            echo "🔴 已停止"
+        fi
+        ;; 
+    set)
+        if [ -z "$2" ]; then
+            echo "用法: eye set <间隔> <时长>"
+            echo "示例: eye set 20m 20s"
+            exit 1
+        fi
+        
+        # 提取参数
+        # 假设 $2 是第一个时间参数，$3 是第二个(可选，默认为旧值)
+        # 但是这里用户可能输入 "eye set 20m 20s"，$2=20m, $3=20s
+        # 用户也可能输入 "eye set 1h30m 30s"
+        
+        gap_input=$2
+        look_input=$3
+        
+        _load_config
+        
+        # 解析间隔
+        new_gap=$(_parse_duration "$gap_input")
+        [ $? -ne 0 ] && exit 1
+        
+        # 解析时长 (如果未提供，保持原样，或者从配置中读取)
+        if [ -n "$look_input" ]; then
+            new_look=$(_parse_duration "$look_input")
+            [ $? -ne 0 ] && exit 1
+        else
+            new_look=$LOOK_AWAY
+        fi
+        
+        REST_GAP=$new_gap
+        LOOK_AWAY=$new_look
+        _save_config
+        
+        echo "✅ 配置已更新: 间隔 $(_format_duration $REST_GAP), 远眺 $(_format_duration $LOOK_AWAY)"
+        ;; 
+    sound)
+        shift
+        _cmd_sound "$@"
+        ;; 
+    _action)
+        _eye_action
+        ;; 
+    *)
+        _usage
+        ;; 
+esac
