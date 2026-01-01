@@ -46,6 +46,26 @@ msg_success() {
 
 # ================= Core Functions =================
 
+# Runtime requirement check
+_check_requirements() {
+    local missing=0
+    
+    if ! command -v notify-send >/dev/null 2>&1; then
+        msg_error "❌ Error: 'notify-send' is missing (libnotify-bin)."
+        msg_error "   Please install it to receive notifications."
+        missing=1
+    fi
+    
+    if ! command -v paplay >/dev/null 2>&1; then
+        msg_warn "⚠️  Warning: 'paplay' is missing (pulseaudio-utils)."
+        msg_warn "   Sound features will be disabled."
+    fi
+
+    if [ $missing -eq 1 ]; then
+        exit 1
+    fi
+}
+
 # Read input from arguments or stdin
 _read_input() {
     if [ $# -gt 0 ]; then

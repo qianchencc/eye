@@ -76,14 +76,20 @@ CMD=$1
 shift
 
 case "$CMD" in
-    start)      _cmd_start ;;
+    start)
+        _check_requirements
+        _cmd_start 
+        ;;
+    now)
+        _check_requirements
+        _cmd_now "$@" 
+        ;;
     stop)       _cmd_stop ;;
     kill)       _cmd_kill ;;
     daemon)     _daemon_loop ;;
     pause)      _cmd_pause "$@" ;;
     pass)       _cmd_pass "$@" ;;
     resume)     _cmd_resume ;;
-    now)        _cmd_now "$@" ;;
     status)     _cmd_status "$@" ;;
     set)        _cmd_set "$@" ;;
     language)   _cmd_language "$@" ;;

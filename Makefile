@@ -11,16 +11,31 @@ CONF_DIR = $(HOME)/.config/eye
 # We'll use a variable for it.
 COMP_DIR = $(HOME)/.local/share/bash-completion/completions
 
+# 定义依赖包的名称 (Debian/Ubuntu)
+DEPS = libnotify-bin pulseaudio-utils make sound-theme-freedesktop bash-completion
+
 # 默认动作
 all:
 	@echo "Run 'make install' to install, or 'make dev' for development setup."
 
-# 检查依赖
+# 专门用来安装依赖的目标 (目前支持 apt)
+install-deps:
+	@echo "📦 Installing dependencies (requires sudo)..."
+	@sudo apt-get update && sudo apt-get install -y $(DEPS)
+	@echo "✅ Dependencies installation complete."
+
+# 检查依赖 (仅提示)
 check:
-	@echo "Checking dependencies..."
-	@if ! command -v notify-send >/dev/null 2>&1; then echo "❌ Missing: notify-send (libnotify)"; exit 1; fi
-	@if ! command -v paplay >/dev/null 2>&1; then echo "❌ Missing: paplay (pulseaudio-utils)"; exit 1; fi
-	@echo "✅ Dependencies satisfied."
+	@echo "🔍 Checking dependencies..."
+	@MISSING=""; \
+	command -v notify-send >/dev/null 2>&1 || MISSING="$$MISSING libnotify-bin"; \
+	command -v paplay >/dev/null 2>&1 || MISSING="$$MISSING pulseaudio-utils"; \
+	if [ -n "$$MISSING" ]; then \
+		echo "⚠️  Missing dependencies:$$MISSING"; \
+		echo "👉 Run 'make install-deps' (Debian/Ubuntu) or install them manually."; \
+	else \
+		echo "✅ All dependencies found."; \
+	fi
 
 # 【生产环境安装】
 install: check
@@ -61,4 +76,11 @@ uninstall:
 	@rm -f $(COMP_DIR)/eye
 	@echo "🗑️ Uninstalled"
 
-.PHONY: all check install dev uninstall
+# 全量卸载 (清理配置和状态)
+purge: uninstall
+	@rm -rf $(CONF_DIR)
+	@rm -rf $(HOME)/.local/state/eye
+	@rm -f $(HOME)/.config/systemd/user/eye.service
+	@echo "🧹 Purged configuration and state"
+
+.PHONY: all check install dev uninstall purge
