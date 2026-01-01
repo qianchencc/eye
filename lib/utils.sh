@@ -134,3 +134,16 @@ _format_duration() {
     [[ $M -gt 0 ]] && printf '%dm ' $M
     [[ $D -eq 0 && $H -eq 0 && $M -eq 0 ]] && printf '%ds' $S || printf '%ds' $S
 }
+
+# Prompt for confirmation [y/N]
+_prompt_confirm() {
+    local msg="$1"
+    # Print to stderr to avoid being captured by pipes
+    printf "${_C_YELLOW}%s${_C_RESET}" "$msg" >&2
+    read -n 1 -r
+    echo "" >&2
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    fi
+    return 1
+}

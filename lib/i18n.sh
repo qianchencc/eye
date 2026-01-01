@@ -32,6 +32,7 @@ _init_messages() {
         MSG_USAGE_CMD_SET="  set <gap> <look> 设置间隔与时长 (如: 20m 20s)"
         MSG_USAGE_CMD_LANG="  language <lang>  设置语言 (en/zh)"
         MSG_USAGE_CMD_AUTOSTART="  autostart [on|off] 管理开机自启"
+        MSG_USAGE_CMD_UNINSTALL="  uninstall        卸载 eye (清理所有数据)"
         MSG_USAGE_AUDIO="音频管理 (eye sound ...):"
         MSG_USAGE_CMD_SOUND_LIST="  sound list              列出音效"
         MSG_USAGE_CMD_SOUND_PLAY="  sound play <tag>        试听音效"
@@ -75,6 +76,10 @@ _init_messages() {
         MSG_AUTOSTART_ON="开机自启已启用。"
         MSG_AUTOSTART_OFF="开机自启已禁用。"
         MSG_AUTOSTART_ERROR="错误: 设置开机自启失败。"
+        
+        MSG_UNINSTALL_CONFIRM="确定要卸载 eye 并清除所有配置和数据吗? [y/N] "
+        MSG_UNINSTALL_STARTING="正在开始卸载并清理..."
+        MSG_UNINSTALL_DONE="卸载及清理完成。"
         
         MSG_SOUND_LIST_HEADER="可用音效:"
         MSG_SOUND_LIST_BUILTIN="  [内置]"
@@ -144,6 +149,7 @@ _init_messages() {
         MSG_USAGE_CMD_SET="  set <gap> <look> Set intervals (e.g. 20m 20s)"
         MSG_USAGE_CMD_LANG="  language <lang>  Set language (en/zh)"
         MSG_USAGE_CMD_AUTOSTART="  autostart [on|off] Manage autostart"
+        MSG_USAGE_CMD_UNINSTALL="  uninstall        Uninstall eye (purge all data)"
         MSG_USAGE_AUDIO="Audio Management:"
         MSG_USAGE_CMD_SOUND_LIST="  sound list              List sounds"
         MSG_USAGE_CMD_SOUND_PLAY="  sound play <tag>        Preview sound"
@@ -187,6 +193,10 @@ _init_messages() {
         MSG_AUTOSTART_ON="Autostart enabled."
         MSG_AUTOSTART_OFF="Autostart disabled."
         MSG_AUTOSTART_ERROR="Error: Failed to enable autostart."
+        
+        MSG_UNINSTALL_CONFIRM="Are you sure you want to uninstall eye and remove ALL configurations and data? [y/N] "
+        MSG_UNINSTALL_STARTING="Starting uninstallation and cleanup..."
+        MSG_UNINSTALL_DONE="Uninstallation and cleanup complete."
         
         MSG_SOUND_LIST_HEADER="Available Sounds:"
         MSG_SOUND_LIST_BUILTIN="  [Built-in]"

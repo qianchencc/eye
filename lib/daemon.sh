@@ -105,14 +105,9 @@ _cmd_autostart() {
     if [[ "$action" == "on" ]]; then
         mkdir -p "$SYSTEMD_DIR"
         
-        # 2. 获取 eye 可执行文件的绝对路径
-        # 由于我们重构了，这里 eye 指向的是 loader。
-        # 在 systemd 中，我们需要调用 bin/eye
-        # 我们假设用户已经安装到了 ~/.local/bin/eye
+        # Get absolute path of eye executable
         local install_path="${HOME}/.local/bin/eye"
-        
         if [ ! -x "$install_path" ]; then
-             # 如果标准路径不存在，尝试使用当前解析的路径
              install_path=$(readlink -f "$0")
         fi
 
@@ -126,6 +121,8 @@ Type=simple
 ExecStart=$install_path daemon
 Restart=always
 RestartSec=10
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+Environment=DISPLAY=:0
 
 [Install]
 WantedBy=default.target
@@ -142,7 +139,9 @@ EOF
         fi
         
     elif [[ "$action" == "off" ]]; then
-        systemctl --user stop eye.service >/dev/null 2>&1
+        # Use the existing stop command to clean up PID and service
+        _cmd_stop >/dev/null 2>&1
+        
         systemctl --user disable eye.service >/dev/null 2>&1
         rm -f "$SERVICE_FILE"
         systemctl --user daemon-reload

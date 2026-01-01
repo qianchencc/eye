@@ -18,6 +18,7 @@ _cmd_usage() {
     echo "$MSG_USAGE_CMD_LANG"
     echo "  config mode <mode> Set mode (unix|normal)"
     echo "$MSG_USAGE_CMD_AUTOSTART"
+    echo "$MSG_USAGE_CMD_UNINSTALL"
     echo "  version            Show version information"
     echo ""
     echo "$MSG_USAGE_AUDIO"
@@ -388,5 +389,48 @@ _cmd_config() {
 
 _cmd_version() {
     echo "eye version $EYE_VERSION"
+}
+
+_cmd_uninstall() {
+    _prompt_confirm "$MSG_UNINSTALL_CONFIRM" || exit 0
+
+    msg_info "$MSG_UNINSTALL_STARTING"
+
+    # 1. Stop and disable autostart
+    _cmd_autostart off >/dev/null 2>&1 || true
+    _cmd_stop >/dev/null 2>&1 || true
+
+    # 2. Identify Paths
+    local bin_path=$(command -v eye)
+    [[ -z "$bin_path" ]] && bin_path=$(readlink -f "$0")
+    local comp_file="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/eye"
+
+    # 3. Clean environment (PATH cleanup in shell RCs)
+    local FILES_TO_CLEAN=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+    for RC_FILE in "${FILES_TO_CLEAN[@]}"; do
+        if [ -f "$RC_FILE" ] && grep -q "# Eye Path" "$RC_FILE"; then
+            sed -i '/# Eye Path/d' "$RC_FILE"
+            sed -i "s|export PATH=\"\$PATH:$HOME/.local/bin\"||g" "$RC_FILE"
+            sed -i '${/^$/d;}' "$RC_FILE"
+        fi
+    done
+
+    # 4. Final Deletion of all traces
+    
+    # Remove binary
+    [ -f "$bin_path" ] && rm -f "$bin_path"
+    
+    # Remove Libs (if in standard location)
+    [[ "$LIB_DIR" == *"$HOME/.local/lib/eye"* ]] && rm -rf "$LIB_DIR"
+    
+    # Remove Data, Config and State
+    [ -d "$DATA_DIR" ] && rm -rf "$DATA_DIR"
+    [ -d "$CONFIG_DIR" ] && rm -rf "$CONFIG_DIR"
+    [ -d "$STATE_DIR" ] && rm -rf "$STATE_DIR"
+    
+    # Remove Completion
+    [ -f "$comp_file" ] && rm -f "$comp_file"
+
+    echo "$MSG_UNINSTALL_DONE"
 }
 

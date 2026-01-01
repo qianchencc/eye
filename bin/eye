@@ -95,6 +95,7 @@ case "$CMD" in
     language)   _cmd_language "$@" ;;
     config)     _cmd_config "$@" ;;
     autostart)  _cmd_autostart "$@" ;;
+    uninstall)  _cmd_uninstall "$@" ;;
     version)    _cmd_version ;;
     sound)      _cmd_sound "$@" ;;
     help)       _cmd_usage ;;
