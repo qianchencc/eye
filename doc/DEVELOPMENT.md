@@ -4,73 +4,49 @@ This document provides guidelines for contributing to `eye`, an eye protection d
 
 ## Project Structure
 
-- **bin/eye**: The main executable entry point. Handles argument parsing, global flags (`-q`), and signal trapping.
-- **lib/**: Core logic libraries.
-  - `cli.sh`: Implementation of CLI commands (`start`, `stop`, `status`, etc.).
-  - `daemon.sh`: The background process logic and signal handling.
-  - `config.sh`: Configuration loading and saving (`~/.config/eye/config`).
-  - `constants.sh`: File paths and global constants.
-  - `i18n.sh`: Internationalization (English/Chinese) and message strings.
-  - `sound.sh`: Audio management logic (`paplay`).
-  - `utils.sh`: Utility functions (logging, time parsing, valid input reading).
-- **doc/**: Documentation.
+- **bin/eye**: The main entry point. Handles argument parsing and command dispatching.
+- **lib/**: Modular logic libraries.
+  - `cli.sh`: Implementation of commands. Uses `_cmd_config` for management tasks.
+  - `daemon.sh`: The background loop and service integration.
+  - `i18n.sh`: Localized strings for English and Chinese.
+  - `constants.sh`: Paths and versioning.
+- **tests/**: Automated test scripts for CI/CD and local validation.
 
-## Design Principles (Unix Philosophy)
+## Command Architecture
 
-1.  **Silence is Golden**: Successful commands should output nothing by default (Unix Mode). Use `msg_success` wrapper which respects `QUIET_MODE` and `EYE_MODE`.
-2.  **Stdout vs Stderr**:
-    - Data goes to `stdout`.
-    - Errors, warnings, and decorative headers go to `stderr`.
-3.  **Machine Readable**:
-    - `eye status` automatically detects if it is being piped (`! -t 1`) and switches to `key=value` format.
-    - In TTY, it shows human-readable formats.
-4.  **Exit Codes**:
-    - Success: `0`
-    - Error: `1` (or other non-zero)
-5.  **Idempotency**:
-    - `eye start` should not fail if already running (silent exit in Unix mode).
-    - `eye sound add` should not fail if the tag exists with the same path.
+We use a **flat-core, nested-management** model:
+1.  **Top-level**: Core operational commands (`start`, `stop`, `status`, `set`, `now`).
+2.  **Config**: Administrative tasks grouped under `config` (`language`, `mode`, `update`, `uninstall`).
+3.  **Sound**: Audio-specific tasks under `sound`.
 
-## Environment Variables
+## Design Principles
 
-- `NO_COLOR=1`: Disable ANSI color codes.
-- `EYE_CONFIG=/path/to/config`: Override configuration file.
-- `QUIET_MODE=1`: Force silence (set via `-q` flag).
+1.  **Silence is Golden**: In `unix` mode (default), successful commands must not output anything to `stdout`.
+2.  **Machine Readable**: `eye status` must output `key=value` pairs when detected not a TTY.
+3.  **Idempotency**: `eye start` should exit 0 if already running. `eye sound add` should overwrite if tag exists.
 
 ## Testing
 
-### Manual Testing
-Use `bin/eye` directly from the source during development.
-
+### Local Validation
+You can run the comprehensive test suite directly:
 ```bash
-# Start daemon
-bin/eye start
-
-# Check status (Human)
-bin/eye status
-
-# Check status (Machine)
-bin/eye status | grep "status="
-
-# Test Silence
-bin/eye set 20m 20s -q
+./tests/comprehensive_test.sh normal
+./tests/comprehensive_test.sh unix
 ```
 
-### Debugging
-- Use `msg_info` for debug logs (visible in TTY).
-- Check `~/.local/state/eye/` for PID and logs.
+### Docker Testing (Recommended)
+To ensure isolation and Ubuntu compatibility:
+```bash
+docker build -t eye-test -f Dockerfile.test .
+docker run --rm -it eye-test ./tests/comprehensive_test.sh normal
+```
 
-## Internationalization
+## Adding New Features
 
-Add new strings to `lib/i18n.sh`.
-- Use `LANG_MODE` variable to check language.
-- Define keys like `MSG_MY_FEATURE_SUCCESS`.
-
-## Adding Commands
-
-1.  Define the function `_cmd_myfeature` in `lib/cli.sh`.
-2.  Add it to the `case` statement in `bin/eye`.
-3.  Update `_cmd_usage` in `lib/cli.sh`.
+1.  **Messages**: Add strings to `lib/i18n.sh`.
+2.  **Logic**: Implement `_cmd_yourfeature` in `lib/cli.sh`.
+3.  **Dispatch**: Add entry to `case` statement in `bin/eye`.
+4.  **Completion**: Update `completions/eye.bash`.
 
 ---
 *Keep it simple, keep it Unix.*

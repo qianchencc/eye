@@ -122,6 +122,3 @@ NO_COLOR=1 eye status > eye_report.log
 # -q 参数确保如果服务已在运行，则静默退出 0，不会产生干扰信息
 eye start -q
 ```
-
----
-*保持简单，保持 Unix。*
