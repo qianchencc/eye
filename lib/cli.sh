@@ -18,6 +18,7 @@ _cmd_usage() {
     echo "$MSG_USAGE_CMD_LANG"
     echo "  config mode <mode> Set mode (unix|normal)"
     echo "$MSG_USAGE_CMD_AUTOSTART"
+    echo "  version            Show version information"
     echo ""
     echo "$MSG_USAGE_AUDIO"
     echo "$MSG_USAGE_CMD_SOUND_LIST"
@@ -383,5 +384,9 @@ _cmd_config() {
          msg_error "Usage: eye config mode <unix|normal>"
          exit 1
     fi
+}
+
+_cmd_version() {
+    echo "eye version $EYE_VERSION"
 }
 

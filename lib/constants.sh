@@ -1,6 +1,32 @@
 #!/bin/bash
 
 # =================配置与路径定义 (XDG准则)=================
+export EYE_VERSION="0.1.0"
+
+# Detect Library Directory (if not already set) and Source/Install Mode
+if [ -z "$LIB_DIR" ]; then
+    SOURCE="${BASH_SOURCE[0]}"
+    while [ -h "$SOURCE" ]; do
+      DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+      SOURCE="$(readlink "$SOURCE")"
+      [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    LIB_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+fi
+
+# Resource Paths
+if [ -d "$LIB_DIR/../assets" ]; then
+    # Dev Mode: assets are in the project root
+    EYE_SHARE_DIR="$(cd "$LIB_DIR/.." && pwd)"
+else
+    # Prod Mode: assets are in XDG_DATA_HOME/eye or standard system share
+    # Default to /usr/local/share/eye or ~/.local/share/eye based on installation prefix
+    # We assume if not in dev, we are in structure .../lib/eye, so .../share/eye is ../../share/eye
+    # However, safest is to default to the XDG location which we will use in Makefile
+    EYE_SHARE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/eye"
+fi
+EYE_SOUNDS_DIR="$EYE_SHARE_DIR/assets/sounds"
+
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/eye"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/eye"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/eye"

@@ -5,26 +5,41 @@
 # 获取音效路径
 _get_sound_path() {
     local tag=$1
-    local path=""    
+    local filename=""
+    
+    # 1. Handle Custom Tags
+    if [[ ! " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
+        local custom_var="SOUND_PATH_${tag}"
+        local custom_path="${!custom_var}"
+        if [ -n "$custom_path" ] && [ -f "$custom_path" ]; then
+            echo "$custom_path"
+            return
+        fi
+        # If custom tag not found or file missing, fallback to default sound
+        tag="default"
+    fi
+
+    # 2. Resolve Filename for Built-in Tags
     case "$tag" in
         "none")      echo "NONE"; return ;; 
-        "default")   path="/usr/share/sounds/freedesktop/stereo/message.oga" ;; 
-        "bell")      path="/usr/share/sounds/freedesktop/stereo/bell.oga" ;; 
-        "complete")  path="/usr/share/sounds/freedesktop/stereo/complete.oga" ;; 
-        "success")   path="/usr/share/sounds/freedesktop/stereo/service-login.oga" ;; 
-        "alarm")     path="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga" ;; 
-        "camera")    path="/usr/share/sounds/freedesktop/stereo/camera-shutter.oga" ;; 
-        "device")    path="/usr/share/sounds/freedesktop/stereo/device-added.oga" ;; 
-        "attention") path="/usr/share/sounds/freedesktop/stereo/window-attention.oga" ;; 
-        *)            local custom_var="SOUND_PATH_${tag}"
-            path="${!custom_var}" 
-            ;; 
+        "default")   filename="message.oga" ;; 
+        "bell")      filename="bell.oga" ;; 
+        "complete")  filename="complete.oga" ;; 
+        "success")   filename="service-login.oga" ;; 
+        "alarm")     filename="alarm-clock-elapsed.oga" ;; 
+        "camera")    filename="camera-shutter.oga" ;; 
+        "device")    filename="device-added.oga" ;; 
+        "attention") filename="window-attention.oga" ;; 
     esac
 
-    if [ ! -f "$path" ]; then
-         path="/usr/share/sounds/freedesktop/stereo/message.oga"
+    # 3. Check App Bundled Sounds
+    if [ -n "$EYE_SOUNDS_DIR" ] && [ -f "$EYE_SOUNDS_DIR/$filename" ]; then
+        echo "$EYE_SOUNDS_DIR/$filename"
+        return
     fi
-    echo "$path"
+
+    # 4. Check System Sounds
+    echo "/usr/share/sounds/freedesktop/stereo/$filename"
 }
 
 _play() {

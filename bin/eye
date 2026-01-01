@@ -45,6 +45,10 @@ QUIET_MODE=""
 ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -v|--version)
+      echo "eye version $EYE_VERSION"
+      exit 0
+      ;;
     -q|--quiet)
       QUIET_MODE=1
       shift
@@ -85,6 +89,7 @@ case "$CMD" in
     language)   _cmd_language "$@" ;;
     config)     _cmd_config "$@" ;;
     autostart)  _cmd_autostart "$@" ;;
+    version)    _cmd_version ;;
     sound)      _cmd_sound "$@" ;;
     help)       _cmd_usage ;;
     _action)    _eye_action ;; # Internal use
