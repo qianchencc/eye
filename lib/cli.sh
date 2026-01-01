@@ -19,7 +19,7 @@ _cmd_usage() {
     echo "$MSG_USAGE_CMD_CONFIG_LANG"
     echo "$MSG_USAGE_CMD_CONFIG_MODE"
     echo "$MSG_USAGE_CMD_CONFIG_AUTO"
-    echo "$MSG_USAGE_CMD_CONFIG_UPDATE"
+    echo "    update [--apply|--force] Check and apply updates"
     echo "$MSG_USAGE_CMD_CONFIG_UN"
     echo "  version            Show version information"
     echo ""
@@ -390,34 +390,29 @@ _cmd_config() {
 
 _cmd_update() {
     local apply_update=0
+    local force_update=0
     for arg in "$@"; do
-        if [[ "$arg" == "--apply" ]]; then
-            apply_update=1
-        fi
+        [[ "$arg" == "--apply" ]] && apply_update=1
+        [[ "$arg" == "--force" ]] && force_update=1
     done
+
+    if [ $force_update -eq 1 ]; then
+        msg_info "Forcing update to the latest version..."
+        _apply_real_update
+        return $?
+    fi
 
     msg_info "$MSG_UPDATE_CHECKING"
 
     local current_version="$EYE_VERSION"
-    local remote_version=""
-    local update_mode=""
-
-    if [ -d "$LIB_DIR/../.git" ]; then
-        update_mode="git"
-        git -C "$LIB_DIR/.." fetch origin --quiet 2>/dev/null
-        remote_version=$(git -C "$LIB_DIR/.." rev-parse --short origin/master 2>/dev/null || \
-                         git -C "$LIB_DIR/.." rev-parse --short origin/main 2>/dev/null)
-        current_version=$(git -C "$LIB_DIR/.." rev-parse --short HEAD 2>/dev/null)
-    else
-        update_mode="url"
-        remote_version=$(curl -s https://raw.githubusercontent.com/qianchencc/eye/master/lib/constants.sh | grep "export EYE_VERSION=" | cut -d'"' -f2)
-        if [ -z "$remote_version" ]; then
-            remote_version=$(curl -s https://raw.githubusercontent.com/qianchencc/eye/main/lib/constants.sh | grep "export EYE_VERSION=" | cut -d'"' -f2)
-        fi
+    # Fetch from master first, fallback to main
+    local remote_version=$(curl -sSL --connect-timeout 5 https://raw.githubusercontent.com/qianchencc/eye/master/lib/constants.sh | grep "export EYE_VERSION=" | cut -d'"' -f2)
+    if [ -z "$remote_version" ]; then
+        remote_version=$(curl -sSL --connect-timeout 5 https://raw.githubusercontent.com/qianchencc/eye/main/lib/constants.sh | grep "export EYE_VERSION=" | cut -d'"' -f2)
     fi
 
     if [[ -z "$remote_version" ]]; then
-        msg_error "Failed to check for updates."
+        msg_error "Error: Could not reach GitHub to check version. Please check your internet connection."
         return 1
     fi
 
@@ -426,35 +421,27 @@ _cmd_update() {
         return 0
     fi
 
+    # If we are here, current_version != remote_version
     msg_warn "$(printf "$MSG_UPDATE_NEW_VERSION" "$remote_version" "$current_version")"
 
     if [ $apply_update -eq 0 ]; then
-        if [ -t 1 ]; then
-             _prompt_confirm "$MSG_UPDATE_APPLY_PROMPT" || return 0
-             apply_update=1
-        else
-             return 0
-        fi
+        msg_info "Use 'eye config update --apply' to install the update."
+        return 0
     fi
 
-    if [ $apply_update -eq 1 ]; then
-        msg_info "$MSG_UPDATE_UPDATING"
-        local success=0
-        if [ "$update_mode" == "git" ]; then
-            echo ">>> Executing: git pull" >&2
-            git -C "$LIB_DIR/.." pull && success=1
-        else
-            echo ">>> Executing: curl | bash" >&2
-            (curl -sSL https://raw.githubusercontent.com/qianchencc/eye/master/install.sh | bash || \
-             curl -sSL https://raw.githubusercontent.com/qianchencc/eye/main/install.sh | bash) && success=1
-        fi
-        
-        if [ $success -eq 1 ]; then
-            msg_success "$MSG_UPDATE_DONE"
-        else
-            msg_error "$MSG_UPDATE_FAILED"
-            return 1
-        fi
+    _apply_real_update
+}
+
+_apply_real_update() {
+    msg_info "$MSG_UPDATE_UPDATING"
+    echo ">>> Executing: curl | bash" >&2
+    if (curl -sSL https://raw.githubusercontent.com/qianchencc/eye/master/install.sh | bash || \
+        curl -sSL https://raw.githubusercontent.com/qianchencc/eye/main/install.sh | bash); then
+        msg_success "$MSG_UPDATE_DONE"
+        return 0
+    else
+        msg_error "$MSG_UPDATE_FAILED"
+        return 1
     fi
 }
 

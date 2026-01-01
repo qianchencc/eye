@@ -86,8 +86,10 @@ _eye_completions()
                         ;;
                     update)
                         if [[ $cword -eq 3 ]]; then
-                            COMPREPLY=( $(compgen -W "--apply" -- "$cur") )
+                            COMPREPLY=( $(compgen -W "--apply --force" -- "$cur") )
                         fi
+                        ;;
+                    uninstall)
                         ;;
                 esac
             fi
