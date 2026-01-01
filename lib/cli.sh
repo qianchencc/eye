@@ -29,11 +29,11 @@ _cmd_usage() {
 
 _cmd_start() {
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-        printf "$MSG_START_ALREADY_RUNNING\n" "$(cat "$PID_FILE")"
+        msg_warn "$(printf "$MSG_START_ALREADY_RUNNING" "$(cat "$PID_FILE")")"
     else
         ( _daemon_loop ) > /dev/null 2>&1 &
         disown
-        echo "$MSG_START_STARTED"
+        msg_success "$MSG_START_STARTED"
     fi
 }
 
@@ -51,9 +51,9 @@ _cmd_stop() {
         # Save Stop Time
         date +%s > "$STOP_FILE"
         
-        echo "$MSG_STOP_STOPPED"
+        msg_success "$MSG_STOP_STOPPED"
     else
-        echo "$MSG_STOP_STOPPED"
+        msg_info "$MSG_STOP_STOPPED"
     fi
 }
 
@@ -79,12 +79,12 @@ _cmd_kill() {
     rm "$STOP_FILE" 2>/dev/null
     rm "$PAUSE_START_FILE" 2>/dev/null
     
-    echo "$MSG_KILL_DONE"
+    msg_success "$MSG_KILL_DONE"
 }
 
 _cmd_pause() {
     duration_str="$*"
-    [ -z "$duration_str" ] && { echo "$MSG_PAUSE_SPECIFY_DURATION"; exit 1; }
+    [ -z "$duration_str" ] && { msg_error "$MSG_PAUSE_SPECIFY_DURATION"; exit 1; }
     seconds=$(_parse_duration "$duration_str")
     if [ $? -eq 0 ]; then
         target_time=$(( $(date +%s) + seconds ))
@@ -92,9 +92,9 @@ _cmd_pause() {
         date +%s > "$PAUSE_START_FILE"
         formatted_dur=$(_format_duration "$seconds")
         target_date=$(date -d "@$target_time" "+%H:%M:%S")
-        printf "$MSG_PAUSE_PAUSED\n" "$formatted_dur" "$target_date"
+        msg_success "$(printf "$MSG_PAUSE_PAUSED" "$formatted_dur" "$target_date")"
     else
-         echo "$MSG_PAUSE_ERROR_FORMAT"
+         msg_error "$MSG_PAUSE_ERROR_FORMAT"
     fi
 }
 
@@ -110,15 +110,15 @@ _cmd_resume() {
              rm "$PAUSE_START_FILE"
         fi
         rm "$PAUSE_FILE"
-        echo "$MSG_RESUME_RESUMED"
+        msg_success "$MSG_RESUME_RESUMED"
     else
-        echo "$MSG_RESUME_NOT_PAUSED"
+        msg_warn "$MSG_RESUME_NOT_PAUSED"
     fi
 }
 
 _cmd_pass() {
     duration_str="$*"
-    [ -z "$duration_str" ] && { echo "$MSG_PASS_ERROR"; exit 1; }
+    [ -z "$duration_str" ] && { msg_error "$MSG_PASS_ERROR"; exit 1; }
     seconds=$(_parse_duration "$duration_str")
     if [ $? -eq 0 ]; then
         if [ ! -f "$EYE_LOG" ]; then
@@ -133,20 +133,20 @@ _cmd_pass() {
         diff=$((current_time - new_last))
         
         if [ $diff -ge $REST_GAP ]; then
-            echo "$MSG_PASS_TRIGGERED"
+            msg_warn "$MSG_PASS_TRIGGERED"
             if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
                 kill -SIGUSR1 $(cat "$PID_FILE")
             fi
         else
-            printf "$MSG_PASS_SKIPPED\n" "$(_format_duration $seconds)"
+            msg_success "$(printf "$MSG_PASS_SKIPPED" "$(_format_duration $seconds)")"
         fi
     else
-         echo "$MSG_PAUSE_ERROR_FORMAT"
+         msg_error "$MSG_PAUSE_ERROR_FORMAT"
     fi
 }
 
 _cmd_now() {
-    echo "$MSG_NOW_TRIGGERING"
+    msg_info "$MSG_NOW_TRIGGERING"
     
     is_reset="false"
     if [[ "$1" == "--reset" ]]; then
@@ -158,12 +158,12 @@ _cmd_now() {
     
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
         if [[ "$is_reset" == "true" ]]; then
-            echo "$MSG_NOW_MANUAL_RESET"
+            msg_success "$MSG_NOW_MANUAL_RESET"
         else
-            echo "$MSG_NOW_MANUAL_TRIGGERED"
+            msg_success "$MSG_NOW_MANUAL_TRIGGERED"
         fi
     else
-        echo "$MSG_NOW_MANUAL_NO_RESET"
+        msg_info "$MSG_NOW_MANUAL_NO_RESET"
     fi
 }
 
@@ -175,10 +175,10 @@ _cmd_status() {
     
     if [ $is_running -eq 1 ]; then
         _load_config
-        printf "$MSG_STATUS_RUNNING\n" "$(cat "$PID_FILE")"
+        msg_success "$(printf "$MSG_STATUS_RUNNING" "$(cat "$PID_FILE")")"
         
         if systemctl --user is-active --quiet eye.service 2>/dev/null; then
-            echo "$MSG_STATUS_SYSTEMD_ACTIVE"
+            msg_info "$MSG_STATUS_SYSTEMD_ACTIVE"
         fi
         
         if [ -f "$PAUSE_FILE" ]; then
@@ -187,13 +187,13 @@ _cmd_status() {
             if [ "$current" -lt "$pause_until" ]; then
                 remaining=$((pause_until - current))
                 target_date=$(date -d "@$pause_until" "+%H:%M:%S")
-                printf "$MSG_STATUS_PAUSED_REMAINING\n" "$(_format_duration $remaining)" "$target_date"
+                msg_warn "$(printf "$MSG_STATUS_PAUSED_REMAINING" "$(_format_duration $remaining)" "$target_date")"
                 
                 if [ -f "$PAUSE_START_FILE" ]; then
                     pause_start=$(cat "$PAUSE_START_FILE")
                     last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
                     diff=$((pause_start - last))
-                    printf "$MSG_STATUS_LAST_REST_FROZEN\n" "$(_format_duration $diff)"
+                    echo "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
                 fi
             else
                 rm "$PAUSE_FILE"
@@ -203,36 +203,36 @@ _cmd_status() {
             diff=$(( $(date +%s) - last ))
             gap_fmt=$(_format_duration $REST_GAP)
             look_fmt=$(_format_duration $LOOK_AWAY)
-            printf "$MSG_STATUS_CONFIG\n" "$gap_fmt" "$look_fmt"
-            printf "$MSG_STATUS_LAST_REST\n" "$(_format_duration $diff)"
-            printf "$MSG_STATUS_SOUND\n" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH"
-            printf "$MSG_STATUS_LANG\n" "$LANGUAGE"
+            msg_info "$(printf "$MSG_STATUS_CONFIG" "$gap_fmt" "$look_fmt")"
+            msg_info "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
+            echo "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
+            echo "$(printf "$MSG_STATUS_LANG" "$LANGUAGE")"
         fi
         
     elif [ -f "$EYE_LOG" ]; then
         _load_config
-        echo "$MSG_STATUS_STOPPED"
+        msg_info "$MSG_STATUS_STOPPED"
         
         gap_fmt=$(_format_duration $REST_GAP)
         look_fmt=$(_format_duration $LOOK_AWAY)
-        printf "$MSG_STATUS_CONFIG\n" "$gap_fmt" "$look_fmt"
+        msg_info "$(printf "$MSG_STATUS_CONFIG" "$gap_fmt" "$look_fmt")"
         
         if [ -f "$STOP_FILE" ]; then
             stop_time=$(cat "$STOP_FILE")
             last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
             diff=$((stop_time - last))
-            printf "$MSG_STATUS_LAST_REST_FROZEN\n" "$(_format_duration $diff)"
+            echo "$(printf "$MSG_STATUS_LAST_REST_FROZEN" "$(_format_duration $diff)")"
         else
             last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
             diff=$(( $(date +%s) - last ))
-            printf "$MSG_STATUS_LAST_REST\n" "$(_format_duration $diff)"
+            echo "$(printf "$MSG_STATUS_LAST_REST" "$(_format_duration $diff)")"
         fi
         
-        printf "$MSG_STATUS_SOUND\n" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH"
+        echo "$(printf "$MSG_STATUS_SOUND" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH")"
         echo "$MSG_STATUS_STOPPED_HINT"
         
     else
-        echo "$MSG_STATUS_KILLED"
+        msg_error "$MSG_STATUS_KILLED"
         echo "$MSG_STATUS_STOPPED_HINT"
     fi
 }
@@ -241,7 +241,7 @@ _cmd_set() {
     gap_input=$1
     look_input=$2
     if [ -z "$gap_input" ]; then
-        echo -e "$MSG_SET_USAGE_HINT"
+        msg_error "$(echo -e "$MSG_SET_USAGE_HINT")"
         exit 1
     fi
     
@@ -261,7 +261,7 @@ _cmd_set() {
     LOOK_AWAY=$new_look
     _save_config
     
-    printf "$MSG_SET_UPDATED\n" "$(_format_duration $REST_GAP)" "$(_format_duration $LOOK_AWAY)"
+    msg_success "$(printf "$MSG_SET_UPDATED" "$(_format_duration $REST_GAP)" "$(_format_duration $LOOK_AWAY)")"
 }
 
 _cmd_language() {
@@ -271,11 +271,11 @@ _cmd_language() {
     elif [[ "$lang_input" == "zh" ]] || [[ "$lang_input" == "Chinese" ]]; then
         LANGUAGE="zh"
     else
-        echo "$MSG_LANG_INVALID"
+        msg_error "$MSG_LANG_INVALID"
         exit 1
     fi
     _save_config
     _init_messages
-    printf "$MSG_LANG_UPDATED\n" "$LANGUAGE" "$LANGUAGE"
+    msg_success "$(printf "$MSG_LANG_UPDATED" "$LANGUAGE")"
 }
 

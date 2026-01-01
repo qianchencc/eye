@@ -74,15 +74,15 @@ _cmd_sound() {
             ;; 
         play)
             local tag=$1
-            [ -z "$tag" ] && { echo "$MSG_SOUND_PLAY_TAG_REQUIRED"; return 1; }
+            [ -z "$tag" ] && { msg_error "$MSG_SOUND_PLAY_TAG_REQUIRED"; return 1; }
             local path=$(_get_sound_path "$tag")
-            printf "$MSG_SOUND_PLAY_PLAYING\n" "$tag" "$path"
+            msg_info "$(printf "$MSG_SOUND_PLAY_PLAYING" "$tag" "$path")"
             if [ -f "$path" ]; then
                 command -v paplay >/dev/null && paplay "$path"
             elif [ "$tag" == "none" ]; then
-                echo "$MSG_SOUND_PLAY_MUTE"
+                msg_info "$MSG_SOUND_PLAY_MUTE"
             else
-                echo "$MSG_SOUND_PLAY_ERROR"
+                msg_error "$MSG_SOUND_PLAY_ERROR"
             fi
             ;; 
         set)
@@ -91,21 +91,21 @@ _cmd_sound() {
             SOUND_START=$s1
             SOUND_END=$s2
             _save_config
-            printf "$MSG_SOUND_SET_UPDATED\n" "$s1" "$s2"
+            msg_success "$(printf "$MSG_SOUND_SET_UPDATED" "$s1" "$s2")"
             ;; 
         add)
             local tag=$1
             local path=$2
             if [ -z "$tag" ] || [ -z "$path" ]; then
-                echo "$MSG_SOUND_ADD_USAGE"
+                msg_error "$MSG_SOUND_ADD_USAGE"
                 return 1
             fi
             if [[ " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
-                 printf "$MSG_SOUND_ADD_ERROR_BUILTIN\n" "$tag"
+                 msg_error "$(printf "$MSG_SOUND_ADD_ERROR_BUILTIN" "$tag")"
                  return 1
             fi
             if [ ! -f "$path" ]; then
-                printf "$MSG_SOUND_ADD_ERROR_FILE\n" "$path"
+                msg_error "$(printf "$MSG_SOUND_ADD_ERROR_FILE" "$path")"
                 return 1
             fi
             if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP" 2>/dev/null; then
@@ -116,33 +116,33 @@ _cmd_sound() {
             local abs_path=$(readlink -f "$path")
             [ -f "$CUSTOM_SOUNDS_MAP" ] && sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
             echo "SOUND_PATH_${tag}=\"${abs_path}\"" >> "$CUSTOM_SOUNDS_MAP"
-            printf "$MSG_SOUND_ADD_ADDED\n" "$tag"
+            msg_success "$(printf "$MSG_SOUND_ADD_ADDED" "$tag")"
             ;; 
         rm)
             local tag=$1
             if [ -z "$tag" ]; then
-                echo "$MSG_SOUND_RM_USAGE"
+                msg_error "$MSG_SOUND_RM_USAGE"
                 return 1
             fi
             if [[ " none default bell complete success alarm camera device attention " =~ " $tag " ]]; then
-                 printf "$MSG_SOUND_RM_ERROR_BUILTIN\n" "$tag"
+                 msg_error "$(printf "$MSG_SOUND_RM_ERROR_BUILTIN" "$tag")"
                  return 1
             fi
             if [ -f "$CUSTOM_SOUNDS_MAP" ]; then
                 if grep -q "SOUND_PATH_${tag}=" "$CUSTOM_SOUNDS_MAP"; then
                     sed -i "/SOUND_PATH_${tag}=/d" "$CUSTOM_SOUNDS_MAP"
-                    printf "$MSG_SOUND_RM_DELETED\n" "$tag"
+                    msg_success "$(printf "$MSG_SOUND_RM_DELETED" "$tag")"
                 else
-                    printf "$MSG_SOUND_RM_NOT_FOUND\n" "$tag"
+                    msg_error "$(printf "$MSG_SOUND_RM_NOT_FOUND" "$tag")"
                 fi
             else
-                echo "$MSG_SOUND_RM_NO_CUSTOM"
+                msg_warn "$MSG_SOUND_RM_NO_CUSTOM"
             fi
             ;; 
         on)
-            SOUND_SWITCH="on"; _save_config; echo "$MSG_SOUND_ON" ;; 
+            SOUND_SWITCH="on"; _save_config; msg_success "$MSG_SOUND_ON" ;; 
         off)
-            SOUND_SWITCH="off"; _save_config; echo "$MSG_SOUND_OFF" ;; 
+            SOUND_SWITCH="off"; _save_config; msg_success "$MSG_SOUND_OFF" ;; 
         *)
             echo "$MSG_SOUND_USAGE" ;; 
     esac

@@ -127,9 +127,9 @@ EOF
         systemctl --user start eye.service >/dev/null 2>&1
         
         if [ $? -eq 0 ]; then
-            echo "$MSG_AUTOSTART_ON"
+            msg_success "$MSG_AUTOSTART_ON"
         else
-            echo "$MSG_AUTOSTART_ERROR"
+            msg_error "$MSG_AUTOSTART_ERROR"
         fi
         
     elif [[ "$action" == "off" ]]; then
@@ -137,7 +137,7 @@ EOF
         systemctl --user disable eye.service >/dev/null 2>&1
         rm -f "$SERVICE_FILE"
         systemctl --user daemon-reload
-        echo "$MSG_AUTOSTART_OFF"
+        msg_success "$MSG_AUTOSTART_OFF"
     else
         echo "Usage: eye autostart [on|off]"
     fi
