@@ -7,7 +7,7 @@ _eye_completions()
     _init_completion -n : || return
 
     # 1. 定义基础命令
-    local commands="start stop kill status now pass set sound pause resume language autostart help"
+    local commands="start stop kill status now pass set sound pause resume language autostart help version config"
     
     # 2. 定义 sound 子命令
     local sound_commands="list play set add rm on off"
@@ -25,7 +25,11 @@ _eye_completions()
 
     # 情况 A: 正在输入主命令 (eye [TAB])
     if [[ $cword -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+        if [[ "$cur" == -* ]]; then
+            COMPREPLY=( $(compgen -W "-q --quiet -v --version -h --help" -- "$cur") )
+        else
+            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+        fi
         return 0
     fi
 
@@ -55,6 +59,13 @@ _eye_completions()
                     fi
                     ;;
             esac
+            ;;
+        config)
+             if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "mode" -- "$cur") )
+            elif [[ $cword -eq 3 && "${words[2]}" == "mode" ]]; then
+                COMPREPLY=( $(compgen -W "unix normal" -- "$cur") )
+            fi
             ;;
         language)
             if [[ $cword -eq 2 ]]; then
