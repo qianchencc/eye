@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================配置与路径定义 (XDG准则)=================
-export EYE_VERSION="0.1.0"
+export EYE_VERSION="0.1.1"
 
 # Detect Library Directory (if not already set) and Source/Install Mode
 if [ -z "$LIB_DIR" ]; then

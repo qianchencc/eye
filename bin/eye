@@ -92,13 +92,10 @@ case "$CMD" in
     resume)     _cmd_resume ;;
     status)     _cmd_status "$@" ;;
     set)        _cmd_set "$@" ;;
-    language)   _cmd_language "$@" ;;
     config)     _cmd_config "$@" ;;
-    autostart)  _cmd_autostart "$@" ;;
-    uninstall)  _cmd_uninstall "$@" ;;
-    version)    _cmd_version ;;
     sound)      _cmd_sound "$@" ;;
     help)       _cmd_usage ;;
+    version)    _cmd_version ;;
     _action)    _eye_action ;; # Internal use
     *)          _cmd_usage ;;
 esac

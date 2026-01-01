@@ -7,10 +7,13 @@ _eye_completions()
     _init_completion -n : || return
 
     # 1. 定义基础命令
-    local commands="start stop kill status now pass set sound pause resume language autostart help version config"
+    local commands="start stop kill status now pass set sound pause resume config help version"
     
     # 2. 定义 sound 子命令
     local sound_commands="list play set add rm on off"
+
+    # 3. 定义 config 子命令
+    local config_commands="mode language autostart update uninstall"
 
     # 3. 获取所有音效 Tags (内置 + 自定义)
     local sound_tags="none default bell complete success alarm camera device attention"
@@ -62,14 +65,31 @@ _eye_completions()
             ;;
         config)
              if [[ $cword -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "mode" -- "$cur") )
-            elif [[ $cword -eq 3 && "${words[2]}" == "mode" ]]; then
-                COMPREPLY=( $(compgen -W "unix normal" -- "$cur") )
-            fi
-            ;;
-        language)
-            if [[ $cword -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "English Chinese en zh" -- "$cur") )
+                COMPREPLY=( $(compgen -W "$config_commands" -- "$cur") )
+            else
+                local subcmd="${words[2]}"
+                case "$subcmd" in
+                    mode)
+                        if [[ $cword -eq 3 ]]; then
+                            COMPREPLY=( $(compgen -W "unix normal" -- "$cur") )
+                        fi
+                        ;;
+                    language)
+                        if [[ $cword -eq 3 ]]; then
+                            COMPREPLY=( $(compgen -W "en zh English Chinese" -- "$cur") )
+                        fi
+                        ;;
+                    autostart)
+                        if [[ $cword -eq 3 ]]; then
+                            COMPREPLY=( $(compgen -W "on off" -- "$cur") )
+                        fi
+                        ;;
+                    update)
+                        if [[ $cword -eq 3 ]]; then
+                            COMPREPLY=( $(compgen -W "--apply" -- "$cur") )
+                        fi
+                        ;;
+                esac
             fi
             ;;
         pause)
@@ -80,11 +100,6 @@ _eye_completions()
         pass)
             if [[ $cword -eq 2 ]]; then
                 COMPREPLY=( $(compgen -W "10m 30m 1h" -- "$cur") )
-            fi
-            ;;
-        autostart)
-            if [[ $cword -eq 2 ]]; then
-                COMPREPLY=( $(compgen -W "on off" -- "$cur") )
             fi
             ;;
         now)

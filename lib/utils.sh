@@ -55,6 +55,11 @@ _check_requirements() {
         msg_error "   Please install it to receive notifications."
         missing=1
     fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        msg_warn "⚠️  Warning: 'curl' is missing."
+        msg_warn "   Update and some config features may not work."
+    fi
     
     if ! command -v paplay >/dev/null 2>&1; then
         msg_warn "⚠️  Warning: 'paplay' is missing (pulseaudio-utils)."
@@ -138,11 +143,10 @@ _format_duration() {
 # Prompt for confirmation [y/N]
 _prompt_confirm() {
     local msg="$1"
-    # Print to stderr to avoid being captured by pipes
+    local answer
     printf "${_C_YELLOW}%s${_C_RESET}" "$msg" >&2
-    read -n 1 -r
-    echo "" >&2
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
         return 0
     fi
     return 1

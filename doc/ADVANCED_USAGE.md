@@ -41,7 +41,7 @@ echo "" | eye resume
 echo "45m 15s" | eye set
 
 # Switch language dynamically
-echo "zh" | eye language
+echo "zh" | eye config language zh
 ```
 
 ### Sound Management

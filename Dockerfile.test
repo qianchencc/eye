@@ -1,0 +1,30 @@
+FROM ubuntu:22.04
+
+# 避免交互式安装提示
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装必要依赖
+RUN apt-get update && apt-get install -y \
+    sudo \
+    libnotify-bin \
+    pulseaudio-utils \
+    make \
+    sound-theme-freedesktop \
+    bash-completion \
+    git \
+    bash \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建测试用户 (systemd --user 需要非 root 用户)
+RUN useradd -m -s /bin/bash tester && \
+    echo "tester ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER tester
+WORKDIR /home/tester/eye
+
+# 拷贝当前项目代码
+COPY --chown=tester:tester . .
+
+# 默认进入 bash
+CMD ["/bin/bash"]

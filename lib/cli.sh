@@ -15,10 +15,12 @@ _cmd_usage() {
     echo "$MSG_USAGE_CMD_STATUS"
     echo "$MSG_USAGE_CMD_NOW"
     echo -e "$MSG_USAGE_CMD_SET"
-    echo "$MSG_USAGE_CMD_LANG"
-    echo "  config mode <mode> Set mode (unix|normal)"
-    echo "$MSG_USAGE_CMD_AUTOSTART"
-    echo "$MSG_USAGE_CMD_UNINSTALL"
+    echo "$MSG_USAGE_CMD_CONFIG"
+    echo "$MSG_USAGE_CMD_CONFIG_LANG"
+    echo "$MSG_USAGE_CMD_CONFIG_MODE"
+    echo "$MSG_USAGE_CMD_CONFIG_AUTO"
+    echo "$MSG_USAGE_CMD_CONFIG_UPDATE"
+    echo "$MSG_USAGE_CMD_CONFIG_UN"
     echo "  version            Show version information"
     echo ""
     echo "$MSG_USAGE_AUDIO"
@@ -187,18 +189,15 @@ _cmd_now() {
 
 _cmd_status() {
     # Parse arguments for status command
-    long_mode=0
+    local long_mode=0
     for arg in "$@"; do
         if [[ "$arg" == "-l" ]] || [[ "$arg" == "--long" ]]; then
             long_mode=1
         fi
     done
-    
-    # DEBUG
-    # echo "DEBUG: long_mode=$long_mode args=$@"
 
-    is_running=0
-    pid=""
+    local is_running=0
+    local pid=""
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
         is_running=1
         pid=$(cat "$PID_FILE")
@@ -222,102 +221,93 @@ _cmd_status() {
         echo "language=$LANGUAGE"
         echo "sound_switch=$SOUND_SWITCH"
         
-        paused="false"
+        local paused="false"
         if [ -f "$PAUSE_FILE" ]; then
             paused="true"
             echo "pause_until=$(cat "$PAUSE_FILE")"
         fi
         echo "paused=$paused"
         
-        last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-        diff=$(( $(date +%s) - last ))
+        local last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+        local diff=$(( $(date +%s) - last ))
         echo "last_rest_ago=$diff"
         return
     fi
 
     # 2. Human Readable Mode (TTY)
-    last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-    current_ts=$(date +%s)
-    raw_diff=$((current_ts - last))
+    local last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+    local current_ts=$(date +%s)
+    local raw_diff=$((current_ts - last))
     
-    # Calculate effective diff (subtract stagnation time)
-    effective_diff=$raw_diff
+    # Calculate effective diff
+    local effective_diff=$raw_diff
     
-    # Handle Pause Info & Adjustment
-    pause_info=""
-    paused="false"
+    # Handle Pause Info
+    local pause_info=""
+    local paused="false"
     if [ -f "$PAUSE_FILE" ]; then
-        pause_until=$(cat "$PAUSE_FILE")
+        local pause_until=$(cat "$PAUSE_FILE")
         if [ "$current_ts" -lt "$pause_until" ]; then
             paused="true"
-            # Calculate pause duration so far
             if [ -f "$PAUSE_START_FILE" ]; then
-                pause_start=$(cat "$PAUSE_START_FILE")
-                current_pause_duration=$((current_ts - pause_start))
+                local pause_start=$(cat "$PAUSE_START_FILE")
+                local current_pause_duration=$((current_ts - pause_start))
                 effective_diff=$((raw_diff - current_pause_duration))
             fi
             
-            # Remaining time
-            p_diff=$((pause_until - current_ts))
-            p_fmt=$(_format_duration $p_diff)
-            pause_info=$(printf "$MSG_STATUS_PAUSED_REMAINING_HUMAN" "$p_fmt")
+            local p_diff=$((pause_until - current_ts))
+            pause_info=$(_format_duration $p_diff)
         else
-            pause_info="$MSG_STATUS_PAUSED_EXPIRED_HUMAN"
             rm "$PAUSE_FILE"
         fi
     fi
     
     # Handle Stop Adjustment
     if [ $is_running -eq 0 ] && [ -f "$STOP_FILE" ]; then
-        stop_time=$(cat "$STOP_FILE")
-        stop_duration=$((current_ts - stop_time))
+        local stop_time=$(cat "$STOP_FILE")
+        local stop_duration=$((current_ts - stop_time))
         effective_diff=$((raw_diff - stop_duration))
     fi
     
-    # Format effective diff
     if [ $effective_diff -lt 0 ]; then effective_diff=0; fi
-    rest_fmt=$(_format_duration $effective_diff)
+    local rest_fmt=$(_format_duration $effective_diff)
     
-    # Config format
-    gap_fmt=$(_format_duration $REST_GAP)
-    look_fmt=$(_format_duration $LOOK_AWAY)
+    local gap_fmt=$(_format_duration $REST_GAP)
+    local look_fmt=$(_format_duration $LOOK_AWAY)
 
-    # Output Logic
-    
-    # Status indicators for Last Rest line
-    status_suffix=""
-    if [ "$paused" == "true" ]; then
-        status_suffix=" (Paused)"
-    elif [ $is_running -eq 0 ] && [ -f "$EYE_LOG" ]; then
-        status_suffix=" (Stopped)"
-    elif [ $is_running -eq 0 ]; then
-        status_suffix=" (Not Running)"
-    fi
-
-    # Concise Output (Default)
-    # Format: Last Rest: <time> ago<status> [<gap> / <look>]
-    last_rest_str=$(printf "$MSG_STATUS_LAST_REST_HUMAN" "$rest_fmt")
-    echo "${last_rest_str}${status_suffix} [${gap_fmt} / ${look_fmt}]"
-    
-    # Long Output (-l/--long)
-    if [ $long_mode -eq 1 ]; then
+    if [ "$EYE_MODE" == "unix" ]; then
+        # Unix Mode: Single line, no decoration
+        local status_label="$MSG_LBL_RUNNING"
+        [ $is_running -eq 0 ] && status_label="$MSG_LBL_STOPPED"
+        [ "$paused" == "true" ] && status_label="$MSG_LBL_PAUSED"
+        
+        printf "%s: %s ago [%s / %s]" "$status_label" "$rest_fmt" "$gap_fmt" "$look_fmt"
+        if [ $long_mode -eq 1 ]; then
+            printf " (PID: %s, Lang: %s, Sound: %s)" "${pid:-N/A}" "$LANGUAGE" "$SOUND_SWITCH"
+        fi
+        echo ""
+    else
+        # Normal Mode: Visual layering with bold titles and colors
         if [ $is_running -eq 1 ]; then
             if [ "$paused" == "true" ]; then
-                 echo "$(printf "$MSG_STATUS_PAUSED_HUMAN" "$pause_info")"
+                 printf "${_C_BOLD}● %s:${_C_RESET} ${_C_YELLOW}%s${_C_RESET} (Remaining: %s)\n" "$MSG_LBL_STATUS" "$MSG_LBL_PAUSED" "$pause_info"
             else
-                 echo "$(printf "$MSG_STATUS_RUNNING_HUMAN" "$pid")"
+                 printf "${_C_BOLD}● %s:${_C_RESET} ${_C_GREEN}%s${_C_RESET} (PID: %s)\n" "$MSG_LBL_STATUS" "$MSG_LBL_RUNNING" "$pid"
             fi
-        elif [ -f "$EYE_LOG" ]; then
-            echo "$MSG_STATUS_STOPPED_HUMAN"
         else
-            echo "$MSG_STATUS_NOT_RUNNING_HUMAN"
+            printf "${_C_BOLD}● %s:${_C_RESET} ${_C_RED}%s${_C_RESET}\n" "$MSG_LBL_STATUS" "$MSG_LBL_STOPPED"
         fi
         
-        echo "$(printf "$MSG_STATUS_CONFIG_HUMAN" "$gap_fmt" "$look_fmt")"
-        echo "$(printf "$MSG_STATUS_SOUND_HUMAN" "$SOUND_SWITCH")"
+        printf "${_C_BOLD}● %s:${_C_RESET} %s ago\n" "$MSG_LBL_LAST_REST" "$rest_fmt"
+        printf "${_C_BOLD}● %s:${_C_RESET}      %s %s / %s %s\n" "$MSG_LBL_PLAN" "$gap_fmt" "$MSG_LBL_WORK" "$look_fmt" "$MSG_LBL_REST"
         
-        if systemctl --user is-active --quiet eye.service 2>/dev/null; then
-            echo "$MSG_STATUS_SYSTEMD_HUMAN"
+        if [ $long_mode -eq 1 ]; then
+            echo "--------------------------------"
+            printf "${_C_BOLD}Language:${_C_RESET}   %s\n" "$LANGUAGE"
+            printf "${_C_BOLD}Sound:${_C_RESET}      %s (Start: %s, End: %s)\n" "$SOUND_SWITCH" "$SOUND_START" "$SOUND_END"
+            if systemctl --user is-active --quiet eye.service 2>/dev/null; then
+                printf "${_C_BOLD}Systemd:${_C_RESET}    Active\n"
+            fi
         fi
     fi
 }
@@ -353,37 +343,118 @@ _cmd_set() {
     msg_success "$(printf "$MSG_SET_UPDATED" "$(_format_duration $REST_GAP)" "$(_format_duration $LOOK_AWAY)")"
 }
 
-_cmd_language() {
-    lang_input=$(_read_input "$@")
-    if [[ "$lang_input" == "en" ]] || [[ "$lang_input" == "English" ]]; then
-        LANGUAGE="en"
-    elif [[ "$lang_input" == "zh" ]] || [[ "$lang_input" == "Chinese" ]]; then
-        LANGUAGE="zh"
-    else
-        msg_error "$MSG_LANG_INVALID"
-        exit 1
-    fi
-    _save_config
-    _init_messages
-    msg_success "$(printf "$MSG_LANG_UPDATED" "$LANGUAGE")"
-}
-
 _cmd_config() {
     local subcmd=$1
     shift
-    if [ "$subcmd" == "mode" ]; then
-        local mode=$1
-        if [[ "$mode" == "unix" || "$mode" == "normal" ]]; then
-            EYE_MODE="$mode"
+    case "$subcmd" in
+        mode)
+            local mode=$(_read_input "$@")
+            if [[ "$mode" == "unix" || "$mode" == "normal" ]]; then
+                EYE_MODE="$mode"
+                _save_config
+                msg_success "Mode updated to: $mode"
+            else
+                msg_error "Usage: eye config mode <unix|normal>"
+                exit 1
+            fi
+            ;;
+        language)
+            local lang_input=$(_read_input "$@")
+            if [[ "$lang_input" == "en" ]] || [[ "$lang_input" == "English" ]]; then
+                LANGUAGE="en"
+            elif [[ "$lang_input" == "zh" ]] || [[ "$lang_input" == "Chinese" ]]; then
+                LANGUAGE="zh"
+            else
+                msg_error "$MSG_LANG_INVALID"
+                exit 1
+            fi
             _save_config
-            msg_success "Mode updated to: $mode"
-        else
-            msg_error "Usage: eye config mode <unix|normal>"
+            _init_messages
+            msg_success "$(printf "$MSG_LANG_UPDATED" "$LANGUAGE")"
+            ;;
+        autostart)
+            _cmd_autostart "$@"
+            ;;
+        uninstall)
+            _cmd_uninstall
+            ;;
+        update)
+            _cmd_update "$@"
+            ;;
+        *)
+            msg_error "Usage: eye config <mode|language|autostart|update|uninstall>"
             exit 1
+            ;;
+    esac
+}
+
+_cmd_update() {
+    local apply_update=0
+    for arg in "$@"; do
+        if [[ "$arg" == "--apply" ]]; then
+            apply_update=1
         fi
+    done
+
+    msg_info "$MSG_UPDATE_CHECKING"
+
+    local current_version="$EYE_VERSION"
+    local remote_version=""
+    local update_mode=""
+
+    if [ -d "$LIB_DIR/../.git" ]; then
+        update_mode="git"
+        git -C "$LIB_DIR/.." fetch origin --quiet 2>/dev/null
+        remote_version=$(git -C "$LIB_DIR/.." rev-parse --short origin/master 2>/dev/null || \
+                         git -C "$LIB_DIR/.." rev-parse --short origin/main 2>/dev/null)
+        current_version=$(git -C "$LIB_DIR/.." rev-parse --short HEAD 2>/dev/null)
     else
-         msg_error "Usage: eye config mode <unix|normal>"
-         exit 1
+        update_mode="url"
+        remote_version=$(curl -s https://raw.githubusercontent.com/qianchencc/eye/master/lib/constants.sh | grep "export EYE_VERSION=" | cut -d'"' -f2)
+        if [ -z "$remote_version" ]; then
+            remote_version=$(curl -s https://raw.githubusercontent.com/qianchencc/eye/main/lib/constants.sh | grep "export EYE_VERSION=" | cut -d'"' -f2)
+        fi
+    fi
+
+    if [[ -z "$remote_version" ]]; then
+        msg_error "Failed to check for updates."
+        return 1
+    fi
+
+    if [[ "$current_version" == "$remote_version" ]]; then
+        msg_success "$(printf "$MSG_UPDATE_ALREADY_NEWEST" "$current_version")"
+        return 0
+    fi
+
+    msg_warn "$(printf "$MSG_UPDATE_NEW_VERSION" "$remote_version" "$current_version")"
+
+    if [ $apply_update -eq 0 ]; then
+        if [ -t 1 ]; then
+             _prompt_confirm "$MSG_UPDATE_APPLY_PROMPT" || return 0
+             apply_update=1
+        else
+             return 0
+        fi
+    fi
+
+    if [ $apply_update -eq 1 ]; then
+        msg_info "$MSG_UPDATE_UPDATING"
+        local success=0
+        if [ "$update_mode" == "git" ]; then
+            echo ">>> Executing: git pull" >&2
+            git -C "$LIB_DIR/.." pull && success=1
+        else
+            echo ">>> Executing: curl | bash" >&2
+            (curl -sSL https://raw.githubusercontent.com/qianchencc/eye/master/install.sh | bash || \
+             curl -sSL https://raw.githubusercontent.com/qianchencc/eye/main/install.sh | bash) && success=1
+        fi
+        
+        if [ $success -eq 1 ]; then
+            msg_success "$MSG_UPDATE_DONE"
+        else
+            msg_error "$MSG_UPDATE_FAILED"
+            return 1
+        fi
     fi
 }
 
