@@ -10,6 +10,8 @@ CUSTOM_SOUNDS_MAP="$CONFIG_DIR/custom_sounds.map"
 EYE_LOG="$STATE_DIR/last_notified"
 PID_FILE="$STATE_DIR/daemon.pid"
 PAUSE_FILE="$STATE_DIR/pause_until"
+PAUSE_START_FILE="$STATE_DIR/pause_start"
+STOP_FILE="$STATE_DIR/stop_time"
 
 # Systemd user service path
 SYSTEMD_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
@@ -76,16 +78,19 @@ _init_messages() {
         MSG_RESUME_NOT_PAUSED="⚠️  当前未处于暂停状态"
         MSG_PASS_ERROR="❌ 请指定时间 (如 10m)"
         MSG_PASS_SKIPPED="⏩ 已跳过 %s (休息将提前到来)"
+        MSG_PASS_TRIGGERED="⚡️ 时间累积已超限，立即触发休息！"
         MSG_NOW_MANUAL_RESET="✅ 已触发手动放松，计时器已重置。"
         MSG_NOW_MANUAL_TRIGGERED="✅ 已触发手动放松。"
         MSG_NOW_MANUAL_NO_RESET="🔔 单次放松执行完毕。(注意：护眼服务当前处于关闭状态)"
         MSG_NOW_TRIGGERING="🔄 正在触发远眺..."
         MSG_STATUS_RUNNING="🟢 运行中 | PID: %s"
         MSG_STATUS_PAUSED_REMAINING="⏸️  [已暂停] 剩余: %s (直到 %s)"
-        MSG_STATUS_STOPPED="🔴 服务未运行 (Stopped)"
+        MSG_STATUS_STOPPED="🔴 服务已停止 (Stopped)"
+        MSG_STATUS_KILLED="🔴 服务未运行 (Not Running)"
         MSG_STATUS_STOPPED_HINT="   💡 提示: 输入 'eye start' 开启护眼模式，或 'eye now' 进行单次放松。"
         MSG_STATUS_CONFIG="⚙️  配置: %s 间隔 / %s 远眺"
         MSG_STATUS_LAST_REST="⏱️  上次休息: %s 前"
+        MSG_STATUS_LAST_REST_FROZEN="⏱️  上次休息: %s 前 (已冻结)"
         MSG_STATUS_SOUND="🔊 音效: [%s] -> [%s] (开关: %s)"
         MSG_STATUS_LANG="🌐 语言: %s"
         MSG_STATUS_SYSTEMD_ACTIVE="Systemd: 已激活"
@@ -171,6 +176,7 @@ _init_messages() {
         MSG_RESUME_NOT_PAUSED="⚠️  Not currently paused"
         MSG_PASS_ERROR="❌ Please specify time (e.g. 10m)"
         MSG_PASS_SKIPPED="⏩ Skipped %s (Break will come sooner)"
+        MSG_PASS_TRIGGERED="⚡️ Time limit exceeded, triggering break immediately!"
         MSG_NOW_MANUAL_RESET="✅ Triggered manual break, timer reset."
         MSG_NOW_MANUAL_TRIGGERED="✅ Manual break triggered."
         MSG_NOW_MANUAL_NO_RESET="🔔 Manual break finished. (Note: Daemon is stopped)"
@@ -178,9 +184,11 @@ _init_messages() {
         MSG_STATUS_RUNNING="🟢 Running | PID: %s"
         MSG_STATUS_PAUSED_REMAINING="⏸️  [Paused] Remaining: %s (until %s)"
         MSG_STATUS_STOPPED="🔴 Service Stopped"
+        MSG_STATUS_KILLED="🔴 Service Not Running"
         MSG_STATUS_STOPPED_HINT="   💡 Hint: Type 'eye start' to enable, or 'eye now' for a manual break."
         MSG_STATUS_CONFIG="⚙️  Config: %s gap / %s look-away"
         MSG_STATUS_LAST_REST="⏱️  Last rest: %s ago"
+        MSG_STATUS_LAST_REST_FROZEN="⏱️  Last rest: %s ago (Frozen)"
         MSG_STATUS_SOUND="🔊 Sound: [%s] -> [%s] (Switch: %s)"
         MSG_STATUS_LANG="🌐 Language: %s"
         MSG_STATUS_SYSTEMD_ACTIVE="Systemd: Active"
@@ -386,35 +394,70 @@ _eye_action() {
 }
 
 # 守护进程主循环
+IS_ACTING=0
+_check_trigger() {
+    # 如果正在执行动作，则忽略
+    [ "$IS_ACTING" -eq 1 ] && return
+    
+    _load_config
+    # _init_messages # Loop already calls it? Maybe better here too
+    
+    local current_time=$(date +%s)
+    
+    # Pause check
+    if [ -f "$PAUSE_FILE" ]; then
+        pause_until=$(cat "$PAUSE_FILE")
+        if [ "$current_time" -lt "$pause_until" ]; then
+             return
+        else
+             rm "$PAUSE_FILE" 
+             # Resume logic: add paused duration
+             if [ -f "$PAUSE_START_FILE" ]; then
+                 start_pause=$(cat "$PAUSE_START_FILE")
+                 duration=$((current_time - start_pause))
+                 old_last=$(cat "$EYE_LOG" 2>/dev/null || echo $current_time)
+                 new_last=$((old_last + duration))
+                 echo "$new_last" > "$EYE_LOG"
+                 rm "$PAUSE_START_FILE"
+             fi
+        fi
+    fi
+
+    local last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+    if [ $((current_time - last_time)) -ge $REST_GAP ]; then
+         IS_ACTING=1
+         _eye_action true # Run in foreground of this function/subshell
+         IS_ACTING=0
+    fi
+}
+
 _daemon_loop() {
     echo $BASHPID > "$PID_FILE"
+    
+    # Handle Stop Resume
+    if [ -f "$STOP_FILE" ]; then
+        stop_time=$(cat "$STOP_FILE")
+        current_time=$(date +%s)
+        stopped_duration=$((current_time - stop_time))
+        old_last=$(cat "$EYE_LOG" 2>/dev/null || echo $current_time)
+        new_last=$((old_last + stopped_duration))
+        echo "$new_last" > "$EYE_LOG"
+        rm "$STOP_FILE"
+    fi
     
     if [ ! -f "$EYE_LOG" ]; then
         date +%s > "$EYE_LOG"
     fi
     
+    # 注册信号处理
+    trap '_check_trigger' SIGUSR1
+    
     while true; do
-        _load_config
-        _init_messages
+        _check_trigger
         
-        current_time=$(date +%s)
-        
-        if [ -f "$PAUSE_FILE" ]; then
-            pause_until=$(cat "$PAUSE_FILE")
-            if [ "$current_time" -lt "$pause_until" ]; then
-                 sleep 5
-                 continue
-            else
-                 rm "$PAUSE_FILE" 
-            fi
-        fi
-
-        last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-        if [ $((current_time - last_time)) -ge $REST_GAP ]; then
-             _eye_action true & 
-             wait $!
-        fi
-        sleep 5
+        # 使用 sleep & wait 实现可中断的 sleep
+        sleep 5 &
+        wait $!
     done
 }
 
@@ -632,6 +675,10 @@ case "$1" in
             kill $(cat "$PID_FILE") >/dev/null 2>&1
             rm "$PID_FILE" 2>/dev/null
             rm "$PAUSE_FILE" 2>/dev/null
+            
+            # Save Stop Time
+            date +%s > "$STOP_FILE"
+            
             echo "$MSG_STOP_STOPPED"
         else
             echo "$MSG_STOP_STOPPED"
@@ -655,6 +702,10 @@ case "$1" in
         done
         
         rm "$PAUSE_FILE" 2>/dev/null
+        rm "$EYE_LOG" 2>/dev/null
+        rm "$STOP_FILE" 2>/dev/null
+        rm "$PAUSE_START_FILE" 2>/dev/null
+        
         echo "$MSG_KILL_DONE"
         ;;
     daemon)
@@ -667,6 +718,7 @@ case "$1" in
         if [ $? -eq 0 ]; then
             target_time=$(( $(date +%s) + seconds ))
             echo "$target_time" > "$PAUSE_FILE"
+            date +%s > "$PAUSE_START_FILE"
             formatted_dur=$(_format_duration "$seconds")
             target_date=$(date -d "@$target_time" "+%H:%M:%S")
             printf "$MSG_PAUSE_PAUSED\n" "$formatted_dur" "$target_date"
@@ -682,17 +734,42 @@ case "$1" in
             if [ ! -f "$EYE_LOG" ]; then
                  date +%s > "$EYE_LOG"
             fi
+            
+            # 1. 更新日志
             current_last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-            # 让 last_time 变小，相当于已经过了更多时间
             new_last=$((current_last - seconds))
             echo "$new_last" > "$EYE_LOG"
-            printf "$MSG_PASS_SKIPPED\n" "$(_format_duration $seconds)"
+            
+            # 2. 检查是否需要立即触发
+            current_time=$(date +%s)
+            diff=$((current_time - new_last))
+            
+            if [ $diff -ge $REST_GAP ]; then
+                echo "$MSG_PASS_TRIGGERED"
+                # 如果 daemon 在运行，发送信号让其立即处理
+                if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
+                then
+                    kill -SIGUSR1 $(cat "$PID_FILE")
+                fi
+            else
+                printf "$MSG_PASS_SKIPPED\n" "$(_format_duration $seconds)"
+            fi
         else
              echo "$MSG_PAUSE_ERROR_FORMAT"
         fi
         ;;
     resume)
         if [ -f "$PAUSE_FILE" ]; then
+            # resume command logic to adjust log
+            if [ -f "$PAUSE_START_FILE" ]; then
+                 start_pause=$(cat "$PAUSE_START_FILE")
+                 current_time=$(date +%s)
+                 duration=$((current_time - start_pause))
+                 old_last=$(cat "$EYE_LOG" 2>/dev/null || echo $current_time)
+                 new_last=$((old_last + duration))
+                 echo "$new_last" > "$EYE_LOG"
+                 rm "$PAUSE_START_FILE"
+            fi
             rm "$PAUSE_FILE"
             echo "$MSG_RESUME_RESUMED"
         else
@@ -722,8 +799,14 @@ case "$1" in
         fi
         ;; 
     status)
+        is_running=0
         if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
         then
+            is_running=1
+        fi
+        
+        # Case 1: Running
+        if [ $is_running -eq 1 ]; then
             _load_config
             printf "$MSG_STATUS_RUNNING\n" "$(cat "$PID_FILE")"
             
@@ -739,21 +822,57 @@ case "$1" in
                     remaining=$((pause_until - current))
                     target_date=$(date -d "@$pause_until" "+%H:%M:%S")
                     printf "$MSG_STATUS_PAUSED_REMAINING\n" "$(_format_duration $remaining)" "$target_date"
+                    
+                    # Frozen Diff for Pause
+                    if [ -f "$PAUSE_START_FILE" ]; then
+                        pause_start=$(cat "$PAUSE_START_FILE")
+                        last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+                        diff=$((pause_start - last))
+                        printf "$MSG_STATUS_LAST_REST_FROZEN\n" "$(_format_duration $diff)"
+                    fi
                 else
                     rm "$PAUSE_FILE"
                 fi
+            else 
+                # Normal running
+                last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+                diff=$(( $(date +%s) - last ))
+                gap_fmt=$(_format_duration $REST_GAP)
+                look_fmt=$(_format_duration $LOOK_AWAY)
+                printf "$MSG_STATUS_CONFIG\n" "$gap_fmt" "$look_fmt"
+                printf "$MSG_STATUS_LAST_REST\n" "$(_format_duration $diff)"
+                printf "$MSG_STATUS_SOUND\n" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH"
+                printf "$MSG_STATUS_LANG\n" "$LANGUAGE"
             fi
             
-            last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-            diff=$(( $(date +%s) - last ))
+        # Case 2: Stopped (Log exists but PID dead)
+        elif [ -f "$EYE_LOG" ]; then
+            _load_config
+            echo "$MSG_STATUS_STOPPED"
+            
             gap_fmt=$(_format_duration $REST_GAP)
             look_fmt=$(_format_duration $LOOK_AWAY)
             printf "$MSG_STATUS_CONFIG\n" "$gap_fmt" "$look_fmt"
-            printf "$MSG_STATUS_LAST_REST\n" "$(_format_duration $diff)"
+            
+            # Frozen diff for Stop
+            if [ -f "$STOP_FILE" ]; then
+                stop_time=$(cat "$STOP_FILE")
+                last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+                diff=$((stop_time - last))
+                printf "$MSG_STATUS_LAST_REST_FROZEN\n" "$(_format_duration $diff)"
+            else
+                # Fallback if no stop time recorded (legacy stop)
+                last=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
+                diff=$(( $(date +%s) - last ))
+                printf "$MSG_STATUS_LAST_REST\n" "$(_format_duration $diff)"
+            fi
+            
             printf "$MSG_STATUS_SOUND\n" "$SOUND_START" "$SOUND_END" "$SOUND_SWITCH"
-            printf "$MSG_STATUS_LANG\n" "$LANGUAGE"
+            echo "$MSG_STATUS_STOPPED_HINT"
+            
+        # Case 3: Killed/Fresh (No Log, No PID)
         else
-            echo "$MSG_STATUS_STOPPED"
+            echo "$MSG_STATUS_KILLED"
             echo "$MSG_STATUS_STOPPED_HINT"
         fi
         ;; 
