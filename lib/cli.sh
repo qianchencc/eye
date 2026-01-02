@@ -335,6 +335,11 @@ _cmd_set() {
     else
         new_look=$LOOK_AWAY
     fi
+
+    if [ "$new_look" -ge "$new_gap" ]; then
+        msg_error "$(printf "$MSG_SET_ERROR_LOOK_TOO_LONG" "$(_format_duration $new_look)" "$(_format_duration $new_gap)")"
+        exit 1
+    fi
     
     REST_GAP=$new_gap
     LOOK_AWAY=$new_look
