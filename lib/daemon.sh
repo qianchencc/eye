@@ -1,152 +1,140 @@
 #!/bin/bash
 
-# =================后台进程逻辑=================
+# =================守护进程核心 (v2.0)=================
 
-_eye_action() {
-    local reset_timer=${1:-true}
-    
-    # Create lock file
-    touch "$BREAK_LOCK_FILE"
-    
-    _load_config
-    _init_messages
-    
-    local look_fmt=$(_format_duration ${LOOK_AWAY})
-    local body_start=$(printf "$MSG_NOTIFY_BODY_START" "$look_fmt")
-    
-    notify-send -t 5000 "$MSG_NOTIFY_TITLE_START" "$body_start"
-    _play "$SOUND_START"
-    
-    sleep "$LOOK_AWAY"
-    
-    notify-send -t 3000 "$MSG_NOTIFY_TITLE_END" "$MSG_NOTIFY_BODY_END"
-    _play "$SOUND_END"
-    
-    if [ "$reset_timer" == "true" ]; then
-        date +%s > "$EYE_LOG"
+# 锁管理
+_try_lock() {
+    local task_id="$1"
+    # 使用 noclobber 原子创建锁文件
+    if ( set -C; echo "$task_id" > "$BREAK_LOCK_FILE" ) 2>/dev/null; then
+        return 0
     fi
-    
-    # Remove lock file
+    return 1
+}
+
+_release_lock() {
     rm -f "$BREAK_LOCK_FILE"
 }
 
-# 守护进程主循环
-IS_ACTING=0
-_check_trigger() {
-    # If acting (internal flag) or lock file exists, ignore
-    if [ "$IS_ACTING" -eq 1 ] || [ -f "$BREAK_LOCK_FILE" ]; then
+# 变量替换
+_format_msg() {
+    local msg="$1"
+    local duration_fmt=$(_format_duration "$DURATION")
+    msg="${msg//\$\{DURATION\}/$duration_fmt}"
+    msg="${msg//\$\{REMAIN_COUNT\}/$REMAIN_COUNT}"
+    echo "$msg"
+}
+
+# 执行单个任务
+_execute_task() {
+    local task_id="$1"
+    
+    # 重新加载任务数据确保最新 (主要是 LAST_RUN 和 STATUS)
+    _load_task "$task_id"
+    
+    # 状态检查
+    if [[ "$STATUS" != "running" ]]; then
         return
     fi
-    
-    _load_config
-    # _init_messages # Loop already calls it? Maybe better here too
-    
-    local current_time=$(date +%s)
-    
-    # Pause check
-    if [ -f "$PAUSE_FILE" ]; then
-        pause_until=$(cat "$PAUSE_FILE")
-        if [ "$current_time" -lt "$pause_until" ]; then
-             return
+
+    # 变量准备
+    local start_msg=$(_format_msg "${MSG_START:-$MSG_NOTIFY_BODY_START}")
+    local end_msg=$(_format_msg "${MSG_END:-$MSG_NOTIFY_BODY_END}")
+
+    if [[ "$DURATION" -le 0 ]]; then
+        # --- 脉冲任务 (Duration=0) ---
+        notify-send -t 5000 "${NAME:-$task_id}" "$start_msg"
+        if [[ "$SOUND_ENABLE" == "true" ]]; then
+            _play "$SOUND_START"
+        fi
+        
+        # 更新状态
+        LAST_RUN=$(date +%s)
+        if [[ "$TARGET_COUNT" -gt 0 ]]; then
+            REMAIN_COUNT=$((REMAIN_COUNT - 1))
+        fi
+        _save_task "$task_id"
+        _log_history "$task_id" "TRIGGERED"
+    else
+        # --- 周期任务 (Duration>0) ---
+        if _try_lock "$task_id"; then
+            notify-send -t 5000 "${NAME:-$task_id}" "$start_msg"
+            if [[ "$SOUND_ENABLE" == "true" ]]; then
+                _play "$SOUND_START"
+            fi
+            
+            # 阻塞执行
+            sleep "$DURATION"
+            
+            notify-send -t 5000 "${NAME:-$task_id}" "$end_msg"
+            if [[ "$SOUND_ENABLE" == "true" ]]; then
+                _play "$SOUND_END"
+            fi
+            
+            _release_lock
+            
+            # 更新状态
+            LAST_RUN=$(date +%s)
+            if [[ "$TARGET_COUNT" -gt 0 ]]; then
+                REMAIN_COUNT=$((REMAIN_COUNT - 1))
+            fi
+            _save_task "$task_id"
+            _log_history "$task_id" "COMPLETED"
         else
-             rm "$PAUSE_FILE" 
-             # Resume logic: add paused duration
-             if [ -f "$PAUSE_START_FILE" ]; then
-                 start_pause=$(cat "$PAUSE_START_FILE")
-                 duration=$((current_time - start_pause))
-                 old_last=$(cat "$EYE_LOG" 2>/dev/null || echo $current_time)
-                 new_last=$((old_last + duration))
-                 echo "$new_last" > "$EYE_LOG"
-                 rm "$PAUSE_START_FILE"
-             fi
+            # 抢锁失败：若是同组任务则跳过，等待下一轮
+            # 这里可以扩展排队逻辑
+            return
         fi
     fi
 
-    local last_time=$(cat "$EYE_LOG" 2>/dev/null || date +%s)
-    if [ $((current_time - last_time)) -ge $REST_GAP ]; then
-         IS_ACTING=1
-         _eye_action true # Run in foreground of this function/subshell
-         IS_ACTING=0
+    # 生命周期检查
+    if [[ "$TARGET_COUNT" -gt 0 ]] && [[ "$REMAIN_COUNT" -le 0 ]]; then
+        if [[ "$IS_TEMP" == "true" ]]; then
+            rm -f "$TASKS_DIR/$task_id"
+            _log_history "$task_id" "DELETED"
+        else
+            STATUS="stopped"
+            _save_task "$task_id"
+            _log_history "$task_id" "FINISHED"
+        fi
     fi
 }
 
+_log_history() {
+    local task_id="$1"
+    local event="$2"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$task_id] $event" >> "$HISTORY_LOG"
+}
+
+# 守护进程主循环
 _daemon_loop() {
     echo $BASHPID > "$PID_FILE"
     
-    # Handle Stop Resume
-    if [ -f "$STOP_FILE" ]; then
-        stop_time=$(cat "$STOP_FILE")
-        current_time=$(date +%s)
-        stopped_duration=$((current_time - stop_time))
-        old_last=$(cat "$EYE_LOG" 2>/dev/null || echo $current_time)
-        new_last=$((old_last + stopped_duration))
-        echo "$new_last" > "$EYE_LOG"
-        rm "$STOP_FILE"
-    fi
-    
-    if [ ! -f "$EYE_LOG" ]; then
-        date +%s > "$EYE_LOG"
-    fi
-    
-    # 注册信号处理
-    trap '_check_trigger' SIGUSR1
-    
+    _load_global_config
+    _init_messages
+
+    msg_info "Daemon started. PID: $BASHPID"
+
     while true; do
-        _check_trigger
+        # 扫描任务
+        for task_file in "$TASKS_DIR"/*; do
+            [ -e "$task_file" ] || continue
+            task_id=$(basename "$task_file")
+            
+            # 加载任务并检查触发
+            if _load_task "$task_id"; then
+                if [[ "$STATUS" == "running" ]]; then
+                    current_time=$(date +%s)
+                    if [ $((current_time - LAST_RUN)) -ge "$INTERVAL" ]; then
+                        # 触发执行 (后台运行以防阻塞其他任务检查)
+                        # 注意：周期任务内部会有 sleep，所以必须后台执行
+                        _execute_task "$task_id" &
+                    fi
+                fi
+            fi
+        done
         
-        # 使用 sleep & wait 实现可中断的 sleep
-        sleep 5 &
-        wait $!
+        # 频率控制
+        sleep 5
     done
-}
-
-_cmd_autostart() {
-    local action=$1
-    if [[ "$action" == "on" ]]; then
-        mkdir -p "$SYSTEMD_DIR"
-        
-        # Get absolute path of eye executable
-        local install_path="${HOME}/.local/bin/eye"
-        if [ ! -x "$install_path" ]; then
-             install_path=$(readlink -f "$0")
-        fi
-
-        cat > "$SERVICE_FILE" <<EOF
-[Unit]
-Description=Eye Protection Tool
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=$install_path daemon
-Restart=always
-RestartSec=10
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
-Environment=DISPLAY=:0
-
-[Install]
-WantedBy=default.target
-EOF
-        
-        systemctl --user daemon-reload
-        systemctl --user enable eye.service >/dev/null 2>&1
-        systemctl --user start eye.service >/dev/null 2>&1
-        
-        if [ $? -eq 0 ]; then
-            msg_success "$MSG_AUTOSTART_ON"
-        else
-            msg_error "$MSG_AUTOSTART_ERROR"
-        fi
-        
-    elif [[ "$action" == "off" ]]; then
-        # Use the existing stop command to clean up PID and service
-        _cmd_stop >/dev/null 2>&1
-        
-        systemctl --user disable eye.service >/dev/null 2>&1
-        rm -f "$SERVICE_FILE"
-        systemctl --user daemon-reload
-        msg_success "$MSG_AUTOSTART_OFF"
-    else
-        echo "Usage: eye autostart [on|off]"
-    fi
 }

@@ -22,26 +22,41 @@ msg_data() {
     echo "$*"
 }
 
+# Helper for stderr output
+_msg_stderr() {
+    local color="$1"
+    shift
+    local msg="$*"
+    
+    # Check global quiet settings
+    # QUIET_MODE is CLI arg (-q), GLOBAL_QUIET is from config
+    if [[ -n "$QUIET_MODE" ]] || [[ "$GLOBAL_QUIET" == "on" ]]; then
+        return
+    fi
+
+    if [ -t 2 ]; then
+        # TTY: Print with color
+        printf "${color}%s${_C_RESET}\n" "$msg" >&2
+    else
+        # Non-TTY: Print plain text
+        echo "$msg" >&2
+    fi
+}
+
 msg_error() {
-    printf "${_C_RED}%s${_C_RESET}\n" "$*" >&2
+    _msg_stderr "$_C_RED" "$*"
 }
 
 msg_warn() {
-    printf "${_C_YELLOW}%s${_C_RESET}\n" "$*" >&2
+    _msg_stderr "$_C_YELLOW" "$*"
 }
 
 msg_info() {
-    # Silent if QUIET_MODE is set or EYE_MODE is unix or not TTY
-    if [ -z "$QUIET_MODE" ] && [ "$EYE_MODE" != "unix" ] && [ -t 1 ]; then
-        printf "${_C_BOLD}%s${_C_RESET}\n" "$*"
-    fi
+    _msg_stderr "$_C_BOLD" "$*"
 }
 
 msg_success() {
-    # Silent if QUIET_MODE is set or EYE_MODE is unix or not TTY
-    if [ -z "$QUIET_MODE" ] && [ "$EYE_MODE" != "unix" ] && [ -t 1 ]; then
-        printf "${_C_GREEN}%s${_C_RESET}\n" "$*"
-    fi
+    _msg_stderr "$_C_GREEN" "$*"
 }
 
 # ================= Core Functions =================

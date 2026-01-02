@@ -28,14 +28,18 @@ fi
 EYE_SOUNDS_DIR="$EYE_SHARE_DIR/assets/sounds"
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/eye"
+TASKS_DIR="$CONFIG_DIR/tasks"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/eye"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/eye"
 
 if [ -n "$EYE_CONFIG" ]; then
     CONFIG_FILE="$EYE_CONFIG"
 else
-    CONFIG_FILE="$CONFIG_DIR/config"
+    CONFIG_FILE="$CONFIG_DIR/eye.conf"
 fi
+
+GLOBAL_CONF="$CONFIG_FILE"
+HISTORY_LOG="$STATE_DIR/history.log"
 
 CUSTOM_SOUNDS_MAP="$CONFIG_DIR/custom_sounds.map"
 EYE_LOG="$STATE_DIR/last_notified"
@@ -50,7 +54,7 @@ SYSTEMD_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 SERVICE_FILE="$SYSTEMD_DIR/eye.service"
 
 # 确保目录存在
-mkdir -p "$(dirname "$CONFIG_FILE")" "$DATA_DIR/sounds" "$STATE_DIR"
+mkdir -p "$(dirname "$CONFIG_FILE")" "$TASKS_DIR" "$DATA_DIR/sounds" "$STATE_DIR"
 
 # 默认配置
 DEFAULT_REST_GAP=1200

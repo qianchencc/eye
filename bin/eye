@@ -26,12 +26,13 @@ source "$LIB_DIR/constants.sh"
 source "$LIB_DIR/utils.sh"
 source "$LIB_DIR/i18n.sh"
 source "$LIB_DIR/config.sh"
+source "$LIB_DIR/io.sh"
 source "$LIB_DIR/sound.sh"
 source "$LIB_DIR/daemon.sh"
 source "$LIB_DIR/cli.sh"
 
 # Initialization
-_load_config
+_load_global_config
 _init_messages
 
 # Signal Handling
@@ -76,26 +77,27 @@ CMD=$1
 shift
 
 case "$CMD" in
-    start)
-        _check_requirements
-        _cmd_start 
-        ;;
-    now)
-        _check_requirements
-        _cmd_now "$@" 
-        ;;
-    stop)       _cmd_stop ;;
-    kill)       _cmd_kill ;;
-    daemon)     _daemon_loop ;;
+    add)        _cmd_add "$@" ;;
+    list)       _cmd_list "$@" ;;
+    remove)     _cmd_remove "$@" ;;
+    edit)       _cmd_edit "$@" ;;
+    in)         _cmd_in "$@" ;;
+    start)      _cmd_start "$@" ;;
+    stop)       _cmd_stop "$@" ;;
     pause)      _cmd_pause "$@" ;;
-    pass)       _cmd_pass "$@" ;;
-    resume)     _cmd_resume ;;
+    resume)     _cmd_resume "$@" ;;
+    now)        _cmd_now "$@" ;;
+    daemon)
+        case "$1" in
+            up)     _cmd_start ;;
+            down)   _cmd_stop ;;
+            *)      _daemon_loop ;;
+        esac
+        ;;
     status)     _cmd_status "$@" ;;
-    set)        _cmd_set "$@" ;;
     config)     _cmd_config "$@" ;;
     sound)      _cmd_sound "$@" ;;
     help)       _cmd_usage ;;
     version)    _cmd_version ;;
-    _action)    _eye_action ;; # Internal use
     *)          _cmd_usage ;;
 esac

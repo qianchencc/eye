@@ -11,7 +11,7 @@ config/custom_sounds.map
 last_notified
 pause_output.txttests/
 
-# 忽略重构计划文档
-refactoring_plan.md
-roadmap.md
-GEMINI.md
+# # 忽略重构计划文档
+# refactoring_plan.md
+# roadmap.md
+# GEMINI.md

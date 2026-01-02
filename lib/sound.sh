@@ -57,7 +57,7 @@ _play() {
 _cmd_sound() {
     local subcmd=$1
     shift
-    _load_config
+    _load_global_config
 
     case "$subcmd" in
         list)
@@ -114,7 +114,7 @@ _cmd_sound() {
             s2=${s2:-$SOUND_END}
             SOUND_START=$s1
             SOUND_END=$s2
-            _save_config
+            _save_global_config
             msg_success "$(printf "$MSG_SOUND_SET_UPDATED" "$s1" "$s2")"
             ;; 
         add)
@@ -193,9 +193,9 @@ _cmd_sound() {
             fi
             ;; 
         on)
-            SOUND_SWITCH="on"; _save_config; msg_success "$MSG_SOUND_ON" ;; 
+            SOUND_SWITCH="on"; _save_global_config; msg_success "$MSG_SOUND_ON" ;; 
         off)
-            SOUND_SWITCH="off"; _save_config; msg_success "$MSG_SOUND_OFF" ;; 
+            SOUND_SWITCH="off"; _save_global_config; msg_success "$MSG_SOUND_OFF" ;; 
         *)
             echo "$MSG_SOUND_USAGE" ;; 
     esac

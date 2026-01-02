@@ -155,6 +155,19 @@ _init_messages() {
         MSG_LBL_PLAN="计划"
         MSG_LBL_WORK="工作"
         MSG_LBL_REST="休息"
+
+        # --- v2.0 Task Management ---
+        MSG_TASK_CREATED="✅ 任务已创建: %s"
+        MSG_TASK_REMOVED="🗑️  任务已删除: %s"
+        MSG_TASK_NOT_FOUND="❌ 未找到任务: %s"
+        MSG_TASK_LIST_HEADER="任务列表:"
+        MSG_TASK_ID="ID"
+        MSG_TASK_NAME="名称"
+        MSG_TASK_GROUP="组"
+        MSG_TASK_INTERVAL="间隔"
+        MSG_TASK_DURATION="持续"
+        MSG_TASK_COUNT="计数"
+        MSG_TASK_STATUS="状态"
     else
         # --- English ---
         MSG_USAGE_HEADER="Usage: eye <command> [args]"
@@ -293,5 +306,18 @@ _init_messages() {
         MSG_LBL_PLAN="Plan"
         MSG_LBL_WORK="work"
         MSG_LBL_REST="rest"
+
+        # --- v2.0 Task Management ---
+        MSG_TASK_CREATED="✅ Task created: %s"
+        MSG_TASK_REMOVED="🗑️  Task removed: %s"
+        MSG_TASK_NOT_FOUND="❌ Task not found: %s"
+        MSG_TASK_LIST_HEADER="Task List:"
+        MSG_TASK_ID="ID"
+        MSG_TASK_NAME="Name"
+        MSG_TASK_GROUP="Group"
+        MSG_TASK_INTERVAL="Interval"
+        MSG_TASK_DURATION="Duration"
+        MSG_TASK_COUNT="Count"
+        MSG_TASK_STATUS="Status"
     fi
 }
