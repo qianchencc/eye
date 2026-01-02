@@ -1,75 +1,39 @@
-# Gemini Context: Eye Protection Tool (v2.0 Refactoring)
+# Gemini Context: Eye Protection Tool (v2.0 Beta)
 
-This document provides instructional context for the `eye` project, a lightweight, Unix-style periodic task manager and eye protection daemon for Linux.
-
-**STATUS: v2.0 REFACTORING IN PROGRESS (Branch: `dev`)**
+**STATUS: v2.0-beta RELEASED**
 
 ## Project Overview
 
-`eye` is being refactored from a simple eye protection tool into a **General Purpose Periodic Task Manager**. It helps users manage recurring tasks (like the 20-20-20 rule, hydration reminders, medication, etc.) via a robust CLI and background daemon.
+`eye` has been successfully refactored into a **General Purpose Periodic Task Manager**.
 
-### Key Technologies
-- **Bash**: Core logic and CLI.
-- **Spool Pattern**: File-based task management (`~/.config/eye/tasks/`).
-- **Systemd**: User-level daemon management.
-- **libnotify & PulseAudio**: Notification and sound alert systems.
+### Key Achievements (v2.0)
+- **Architecture**: Switched to Spool Pattern (`~/.config/eye/tasks/`).
+- **Engine**: Robust daemon with multi-task support and file locking.
+- **CLI**: Full CRUD support (`add`, `list`, `remove`, `edit`, `in`).
+- **Control**: Group-based management (`pause @work`).
+- **Migration**: Automatic v1.x -> v2.0 migration.
 
-### Architecture (Target v2.0)
+### Current Version: 0.2.0-beta
 
-The project is moving towards an "Everything is a File" architecture.
-
-- **Storage Model**:
-    - **Tasks**: stored as individual files in `~/.config/eye/tasks/`. Each file represents a task (key-value pairs + sourced script).
-    - **Global Config**: `~/.config/eye/eye.conf` (global switches, default behaviors).
-    - **State**: `~/.local/state/eye/` (PID files, history logs).
-- **Daemon Logic**:
-    - A read-write execution loop that scans the task spool.
-    - Handles "Pulse" tasks (instant notification) and "Periodic" tasks (duration-based with file locking).
-    - Manages task lifecycle (execution counts, temporary tasks).
-
-### Directory Structure (v2.0 Target)
-- `bin/eye`: Main entry point (dispatcher).
+## Directory Structure
+- `bin/eye`: Main dispatcher.
 - `lib/`:
-    - `io.sh`: Atomic file I/O operations.
-    - `daemon.sh`: Core scheduler engine.
-    - `cli.sh`: Command implementations (CRUD).
-    - `utils.sh`: Output stream management (Stdout vs Stderr/TTY).
-    - `migrate.sh`: Migration logic from v1.x.
+    - `cli.sh`: Command logic.
+    - `daemon.sh`: Background engine.
+    - `io.sh`: Atomic file operations.
+    - `migrate.sh`: Migration logic.
+- `tests/`:
+    - `test_v2_engine.sh`: Core logic tests.
+    - `test_v2_cli.sh`: CLI interaction tests.
 
-## Development & Refactoring Roadmap
+## Recent Changes
+- Fixed language switching mechanism (dynamic reload).
+- Enhanced `add` command with templates.
+- Added extensive help menus for subcommands.
+- Updated notification format.
 
-The project is currently in the **Refactoring Phase** (see `roadmap.md` for details).
+## Next Steps
+- Gather user feedback on v2.0-beta.
+- Polish documentation.
+- Prepare for v1.0.0 stable release (SemVer reset or continue from 0.2?).
 
-1.  **Infrastructure & Data Layer**: Establish atomic I/O, `tasks/` directory structure, and stream-based output logging.
-2.  **The Engine**: Rewrite `daemon.sh` to support multi-task scheduling, file locking, and lifecycle hooks.
-3.  **CLI Interface**: Implement `add`, `remove`, `list`, `in` (temp task), and group control commands (`start @work`).
-4.  **Migration & Release**: Create scripts to migrate v1.0 `config` to v2.0 task files; update documentation and completions.
-
-## Core Commands (Target)
-
-- **Task Management**:
-    - `eye add <name>`: Create a new task (interactive or flagged).
-    - `eye list`: Show all tasks in a table.
-    - `eye in <time> <msg>`: Create a one-off temporary task.
-    - `eye edit <id>`: Edit a task file.
-    - `eye remove <id>`: Delete a task.
-- **Control**:
-    - `eye start/stop/pause/resume [id | @group]`: Control specific tasks or groups.
-    - `eye now [id]`: Trigger a task immediately.
-- **Daemon**:
-    - `eye daemon up/down`: Manage the background service.
-    - `eye status`: Show daemon status and active tasks.
-
-## Building and Running
-
-- **Install**: `make install`
-- **Dev Setup**: `make dev` (Symlinks for local development).
-- **Tests**: Use `tests/comprehensive_test.sh` (needs updating for v2.0).
-
-## Coding Conventions
-
-- **Atomic Writes**: Always use `_atomic_write` for file modifications to prevent corruption.
-- **Output Streams**:
-    - **Stdout**: Data only (parsable).
-    - **Stderr**: Human interaction, logs, emojis. Check `[ -t 2 ]` for color.
-- **Locking**: Use `set -C` (noclobber) on lockfiles for critical sections.

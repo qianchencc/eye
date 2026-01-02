@@ -110,12 +110,13 @@ _log_history() {
 _daemon_loop() {
     echo $BASHPID > "$PID_FILE"
     
-    _load_global_config
-    _init_messages
-
     msg_info "Daemon started. PID: $BASHPID"
 
     while true; do
+        # 动态重载配置 (语言、静默模式等)
+        _load_global_config
+        _init_messages
+
         # 扫描任务
         for task_file in "$TASKS_DIR"/*; do
             [ -e "$task_file" ] || continue

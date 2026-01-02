@@ -35,11 +35,50 @@ _cmd_add() {
     shift
     
     if [[ -z "$task_id" ]]; then
-        # 交互模式 (简单实现)
-        printf "Task ID: " >&2; read -r task_id
+        msg_error "Usage: eye add <name> [options]"
+        return 1
     fi
 
-    [[ -z "$task_id" ]] && return 1
+    # Check for existing task or editor mode (no flags)
+    if [[ $# -eq 0 ]]; then
+        local task_file="$TASKS_DIR/$task_id"
+        if [[ -f "$task_file" ]]; then
+            msg_warn "Task '$task_id' already exists. Opening for edit..."
+        else
+            # Create Template
+            cat > "$task_file" <<EOF
+# Task Definition: $task_id
+# 任务定义: $task_id
+
+NAME="$task_id"
+GROUP="default"
+
+# Interval (e.g., 20m, 1h) | 触发间隔
+INTERVAL="20m"
+
+# Duration (e.g., 20s). 0 = Instant/Pulse | 持续时间 (0为即时)
+DURATION="20s"
+
+# Messages (Vars: \${DURATION}) | 通知文案
+MSG_START=""
+MSG_END=""
+
+# Sound | 音效设置
+SOUND_ENABLE="true"
+SOUND_START="default"
+SOUND_END="complete"
+
+# Internal State (Modify with caution) | 内部状态
+TARGET_COUNT=-1
+REMAIN_COUNT=-1
+IS_TEMP=false
+STATUS="running"
+LAST_RUN="$(date +%s)"
+EOF
+        fi
+        _cmd_edit "$task_id"
+        return
+    fi
 
     # 解析参数 (简单解析)
     local interval=1200
@@ -72,6 +111,23 @@ _cmd_add() {
     if _save_task "$task_id"; then
         msg_success "$(printf "$MSG_TASK_CREATED" "$task_id")"
     fi
+}
+
+_cmd_daemon() {
+    local cmd="$1"
+    shift
+    case "$cmd" in
+        up)     _cmd_start ;;
+        down)   _cmd_stop ;;
+        status) _cmd_status ;;
+        help|*)
+            echo "Usage: eye daemon <command>"
+            echo "Commands:"
+            echo "  up      Start the background service"
+            echo "  down    Stop the background service"
+            echo "  status  Show service status and tasks"
+            ;;
+    esac
 }
 
 _cmd_in() {
@@ -289,8 +345,11 @@ _cmd_config() {
             _save_global_config
             msg_success "Quiet mode: $GLOBAL_QUIET"
             ;; 
-        *)
-            echo "Usage: eye config <language|quiet>"
+        help|*)
+            echo "Usage: eye config <command> [args]"
+            echo "Commands:"
+            echo "  language <en|zh>   Set global language"
+            echo "  quiet <on|off>     Enable/Disable quiet mode"
             ;; 
     esac
 }

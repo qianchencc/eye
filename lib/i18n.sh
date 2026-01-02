@@ -129,7 +129,7 @@ _init_messages() {
         
         # Notifications
         MSG_NOTIFY_TITLE_START="护眼提醒"
-        MSG_NOTIFY_BODY_START="请远眺 %s！"
+        MSG_NOTIFY_BODY_START="请远眺 ${DURATION}！"
         MSG_NOTIFY_TITLE_END="休息结束"
         MSG_NOTIFY_BODY_END="眼睛休息完毕，继续工作吧。"
         MSG_ERROR_INVALID_TIME_FORMAT="错误: 时间格式无效"
@@ -280,7 +280,7 @@ _init_messages() {
         
         # Notifications
         MSG_NOTIFY_TITLE_START="Eye Protection"
-        MSG_NOTIFY_BODY_START="Look away for %s!"
+        MSG_NOTIFY_BODY_START="Look away for ${DURATION}!"
         MSG_NOTIFY_TITLE_END="Break Ended"
         MSG_NOTIFY_BODY_END="Eyes rested. Keep going!"
         MSG_ERROR_INVALID_TIME_FORMAT="Error: Invalid time format"

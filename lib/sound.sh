@@ -196,6 +196,15 @@ _cmd_sound() {
             SOUND_SWITCH="on"; _save_global_config; msg_success "$MSG_SOUND_ON" ;; 
         off)
             SOUND_SWITCH="off"; _save_global_config; msg_success "$MSG_SOUND_OFF" ;; 
+        help)
+            echo "Usage: eye sound <command>"
+            echo "Commands:"
+            echo "  list               List available sounds"
+            echo "  play <tag>         Preview a sound"
+            echo "  add <tag> <file>   Register a custom sound"
+            echo "  rm <tag>           Remove a custom sound"
+            echo "  on/off             Toggle global sound"
+            ;;
         *)
             echo "$MSG_SOUND_USAGE" ;; 
     esac

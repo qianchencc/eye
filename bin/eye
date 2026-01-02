@@ -89,13 +89,7 @@ case "$CMD" in
     pause)      _cmd_pause "$@" ;;
     resume)     _cmd_resume "$@" ;;
     now)        _cmd_now "$@" ;;
-    daemon)
-        case "$1" in
-            up)     _cmd_start ;;
-            down)   _cmd_stop ;;
-            *)      _daemon_loop ;;
-        esac
-        ;;
+    daemon)     _cmd_daemon "$@" ;;
     status)     _cmd_status "$@" ;;
     config)     _cmd_config "$@" ;;
     sound)      _cmd_sound "$@" ;;
