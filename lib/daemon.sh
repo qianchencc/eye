@@ -91,11 +91,12 @@ _execute_task() {
     if [[ "$TARGET_COUNT" -gt 0 ]] && [[ "$REMAIN_COUNT" -le 0 ]]; then
         if [[ "$IS_TEMP" == "true" ]]; then
             rm -f "$TASKS_DIR/$task_id"
-            _log_history "$task_id" "DELETED"
+            _log_history "$task_id" "DELETED (Count reached)"
+            # If default task is deleted, maybe warn? But standard behavior is just delete.
         else
             STATUS="stopped"
             _save_task "$task_id"
-            _log_history "$task_id" "FINISHED"
+            _log_history "$task_id" "FINISHED (Count reached)"
         fi
     fi
 }

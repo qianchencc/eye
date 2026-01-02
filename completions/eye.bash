@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Definition for eye command completion (v2.0)
+# Definition for eye command completion (v2.0 Refactored)
 
 _eye_completions()
 {
@@ -8,12 +8,11 @@ _eye_completions()
     _init_completion -n : || return
 
     # 1. Base Commands
-    local commands="add list remove edit in start stop pause resume now daemon status sound config help version"
+    local commands="add list remove edit in start stop pause resume now time count reset daemon status sound help version"
     
     # 2. Subcommands
-    local daemon_commands="up down reload enable disable root-cmd quiet"
-    local config_commands="language quiet"
-    local sound_commands="list play add rm on off"
+    local daemon_commands="up down enable disable default quiet root-cmd language help"
+    local sound_commands="list play add rm on off help"
     
     # 3. Dynamic Resources
     local tasks_dir="${XDG_CONFIG_HOME:-$HOME/.config}/eye/tasks"
@@ -26,14 +25,12 @@ _eye_completions()
     
     _get_groups() {
         if [ -d "$tasks_dir" ]; then
-            # Extract content between quotes in GROUP="value"
             grep -h "GROUP=" "$tasks_dir"/* 2>/dev/null | cut -d'"' -f2 | sort -u | sed 's/^/@/'
         fi
     }
 
     # === Logic ===
 
-    # Find the main command (skip flags)
     local cmd=""
     local cmd_idx=0
     for ((i=1; i<cword; i++)); do
@@ -57,11 +54,29 @@ _eye_completions()
     # Case B: Completing arguments for commands
     case "$cmd" in
         # Task ID or Group Arguments
-        remove|edit|start|stop|pause|resume|now)
+        remove|edit|start|stop|pause|resume|now|time|count|reset)
             if [[ $((cword - cmd_idx)) -eq 1 ]]; then
-                local tasks=$(_get_tasks)
-                local groups=$(_get_groups)
-                COMPREPLY=( $(compgen -W "$tasks $groups" -- "$cur") )
+                # Some commands take a value first (time, count), handled loosely here
+                # time/count take <delta> first, then task.
+                if [[ "$cmd" == "time" || "$cmd" == "count" ]]; then
+                    # Could suggest typical deltas, but let's just suggest tasks for 2nd arg
+                    if [[ "$prev" != "time" && "$prev" != "count" ]]; then 
+                        local tasks=$(_get_tasks)
+                        local groups=$(_get_groups)
+                        COMPREPLY=( $(compgen -W "$tasks $groups" -- "$cur") )
+                    fi
+                elif [[ "$cmd" == "reset" ]]; then
+                     local tasks=$(_get_tasks)
+                     local groups=$(_get_groups)
+                     COMPREPLY=( $(compgen -W "$tasks $groups --time --count" -- "$cur") )
+                else
+                    local tasks=$(_get_tasks)
+                    local groups=$(_get_groups)
+                    COMPREPLY=( $(compgen -W "$tasks $groups" -- "$cur") )
+                fi
+            elif [[ "$cmd" == "reset" ]]; then
+                # After target, suggest flags
+                COMPREPLY=( $(compgen -W "--time --count" -- "$cur") )
             fi
             ;;
         
@@ -69,20 +84,18 @@ _eye_completions()
         daemon)
             if [[ $((cword - cmd_idx)) -eq 1 ]]; then
                 COMPREPLY=( $(compgen -W "$daemon_commands" -- "$cur") )
-            fi
-            ;;
-
-        # Config
-        config)
-            if [[ $((cword - cmd_idx)) -eq 1 ]]; then
-                COMPREPLY=( $(compgen -W "$config_commands" -- "$cur") )
             else
                 local subcmd="${words[cmd_idx+1]}"
                 case "$subcmd" in
-                    language)
-                        COMPREPLY=( $(compgen -W "en zh" -- "$cur") ) ;;
+                    default)
+                         local tasks=$(_get_tasks)
+                         COMPREPLY=( $(compgen -W "$tasks" -- "$cur") ) ;;
                     quiet)
                         COMPREPLY=( $(compgen -W "on off" -- "$cur") ) ;;
+                    language)
+                        COMPREPLY=( $(compgen -W "en zh" -- "$cur") ) ;;
+                    root-cmd)
+                        COMPREPLY=( $(compgen -W "status help" -- "$cur") ) ;;
                 esac
             fi
             ;;
@@ -92,15 +105,12 @@ _eye_completions()
             if [[ $((cword - cmd_idx)) -eq 1 ]]; then
                 COMPREPLY=( $(compgen -W "$sound_commands" -- "$cur") )
             else
-                # ... (Simplified sound completion logic)
                 local subcmd="${words[cmd_idx+1]}"
                 case "$subcmd" in
                     play|rm)
-                         # Simple hardcoded common tags + logic to scan map if needed
-                         COMPREPLY=( $(compgen -W "default bell complete" -- "$cur") )
+                         COMPREPLY=( $(compgen -W "default bell complete success alarm camera device attention" -- "$cur") )
                          ;;
                     on|off)
-                         # Support toggling specific tasks
                          local tasks=$(_get_tasks)
                          COMPREPLY=( $(compgen -W "$tasks" -- "$cur") )
                          ;;
@@ -111,7 +121,7 @@ _eye_completions()
         # Add Command Options
         add)
              if [[ "$cur" == -* ]]; then
-                COMPREPLY=( $(compgen -W "--interval --duration --group --count --temp" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--interval --duration --group" -- "$cur") )
              fi
              ;;
     esac

@@ -43,7 +43,11 @@ _get_sound_path() {
 }
 
 _play() {
-    [ "$SOUND_SWITCH" != "on" ] && return
+    # Global Override Check
+    if [[ "$SOUND_GLOBAL_OVERRIDE" == "off" ]]; then
+        return
+    fi
+
     local tag=$1
     local file=$(_get_sound_path "$tag")
     
@@ -106,16 +110,6 @@ _cmd_sound() {
             else
                 msg_error "$MSG_SOUND_PLAY_ERROR"
             fi
-            ;; 
-        set)
-            local input_str=$(_read_input "$@")
-            read -r s1 s2 <<< "$input_str"
-            s1=${s1:-$SOUND_START}
-            s2=${s2:-$SOUND_END}
-            SOUND_START=$s1
-            SOUND_END=$s2
-            _save_global_config
-            msg_success "$(printf "$MSG_SOUND_SET_UPDATED" "$s1" "$s2")"
             ;; 
         add)
             local tag=$1
@@ -193,17 +187,38 @@ _cmd_sound() {
             fi
             ;; 
         on)
-            SOUND_SWITCH="on"; _save_global_config; msg_success "$MSG_SOUND_ON" ;; 
+            local target="$1"
+            if [[ -n "$target" ]]; then
+                # Enable specific task sound
+                if _load_task "$target"; then
+                    SOUND_ENABLE="true"
+                    _save_task "$target"
+                    msg_success "Sound enabled for $target"
+                fi
+            else
+                SOUND_GLOBAL_OVERRIDE="on"
+                _save_global_config
+                msg_success "$MSG_SOUND_ON (Respecting tasks)"
+            fi
+            ;; 
         off)
-            SOUND_SWITCH="off"; _save_global_config; msg_success "$MSG_SOUND_OFF" ;; 
+            local target="$1"
+            if [[ -n "$target" ]]; then
+                # Disable specific task sound
+                if _load_task "$target"; then
+                    SOUND_ENABLE="false"
+                    _save_task "$target"
+                    msg_success "Sound disabled for $target"
+                fi
+            else
+                SOUND_GLOBAL_OVERRIDE="off"
+                _save_global_config
+                msg_success "$MSG_SOUND_OFF (Forced mute)"
+            fi
+            ;; 
         help)
-            echo "Usage: eye sound <command>"
-            echo "Commands:"
-            echo "  list               List available sounds"
-            echo "  play <tag>         Preview a sound"
-            echo "  add <tag> <file>   Register a custom sound"
-            echo "  rm <tag>           Remove a custom sound"
-            echo "  on/off             Toggle global sound"
+            echo "$MSG_HELP_SOUND_HEADER"
+            echo -e "$MSG_HELP_SOUND_CMDS"
             ;;
         *)
             echo "$MSG_SOUND_USAGE" ;; 

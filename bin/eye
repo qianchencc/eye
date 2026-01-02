@@ -89,9 +89,11 @@ case "$CMD" in
     pause)      _cmd_pause "$@" ;;
     resume)     _cmd_resume "$@" ;;
     now)        _cmd_now "$@" ;;
+    time)       _cmd_time "$@" ;;
+    count)      _cmd_count "$@" ;;
+    reset)      _cmd_reset "$@" ;;
     daemon)     _cmd_daemon "$@" ;;
     status)     _cmd_status "$@" ;;
-    config)     _cmd_config "$@" ;;
     sound)      _cmd_sound "$@" ;;
     help)       _cmd_usage ;;
     version)    _cmd_version ;;
