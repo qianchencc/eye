@@ -30,9 +30,11 @@ source "$LIB_DIR/io.sh"
 source "$LIB_DIR/sound.sh"
 source "$LIB_DIR/daemon.sh"
 source "$LIB_DIR/cli.sh"
+source "$LIB_DIR/migrate.sh"
 
 # Initialization
 _load_global_config
+_migrate_v1_to_v2
 _init_messages
 
 # Signal Handling

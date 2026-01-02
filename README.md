@@ -1,67 +1,99 @@
-# Eye 👁️
+# Eye (v2.0)
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/qianchencc/eye)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+**Eye** has evolved from a simple eye protection tool into a **General Purpose Periodic Task Manager** for Linux, built with the Unix philosophy in mind.
 
-**Eye** 是一款轻量级、遵循 Unix 哲学的 Linux 护眼守护进程。它旨在通过非侵入的方式提醒您遵循 **20-20-20 原则**，缓解眼部疲劳。
+It manages recurring tasks (like the 20-20-20 rule, hydration reminders, or medication schedules) via a robust file-based spool system and a lightweight background daemon.
 
----
+## ✨ Features (v2.0)
 
-## ✨ 功能特性
+- **Everything is a File**: Tasks are simple text files in `~/.config/eye/tasks/`.
+- **Spool Architecture**: Add, remove, or edit tasks atomically without stopping the daemon.
+- **Flexible Scheduling**: Support for **Pulse** (instant notification) and **Periodic** (duration-based with locking) tasks.
+- **Group Control**: Manage tasks in batches using `@group` selectors (e.g., `eye pause @work`).
+- **Resource Efficient**: Pure Bash, event-driven, minimal footprint.
 
-*   **极简主义**：纯 Bash 编写，无重型依赖。
-*   **类Unix风格**：原生支持管道操作，提供机器可读的 `key=value` 输出。
-*   **非侵入式通知**：桌面通知与音频提示。
-*   **高度可配置**：支持多语言切换、自定义音效及运行模式。
-*   **零残留**：内置自更新与自卸载功能。
+## 🚀 Installation
 
-## 🚀 快速开始
-
-### 安装 (Recommended)
-```bash
-wget -qO- https://raw.githubusercontent.com/qianchencc/eye/master/install.sh | bash
-```
-
-### 开发与源码安装
 ```bash
 git clone https://github.com/qianchencc/eye.git
 cd eye
-make install  # 生产环境安装
-# 或者使用 make dev 建立开发软链接
+make install
+```
+*Note: Ensure `~/.local/bin` is in your `$PATH`.*
+
+## 📖 Quick Start
+
+### 1. Start the Daemon
+```bash
+eye daemon up
 ```
 
-> **注意**：安装后请运行 `source ~/.bashrc` (或对应的 shell 配置) 以启用补全。
+### 2. Create Tasks
+```bash
+# Classic 20-20-20 rule (Interval: 20m, Duration: 20s)
+eye add vision -i 20m -d 20s -g health
 
-## 🛠️ 使用指南
+# Hydration reminder (Every 1 hour, instant notification)
+eye add water -i 1h
 
-### 核心控制
-| 命令 | 说明 |
+# Temporary reminder (One-off)
+eye in 45m "Pizza is ready!"
+```
+
+### 3. Manage Tasks
+```bash
+eye list               # View all tasks
+eye pause @health      # Pause all health-related tasks
+eye now water          # Trigger hydration reminder immediately
+eye edit vision        # Edit the task file in $EDITOR
+```
+
+## 🛠️ Command Reference
+
+### Task Management
+| Command | Description |
 | :--- | :--- |
-| `eye start` | 启动后台守护进程 |
-| `eye stop` | 停止服务并保存当前状态 |
-| `eye status [-l]` | 查看状态。`-l` 展开详细配置与 PID |
-| `eye now [--reset]` | 立即休息。`--reset` 重置当前计时周期.即使eye未运行也可以使用该命令 |
-| `eye set <gap> <look>` | 设置周期。例如 `eye set 20m 20s` |
-| `eye kill`| 用于处理可能存在的卡死情况，释放所有进程，并将eye恢复到刚安装时的状态 |
+| `eye add <name>` | Create a new task (use `-i`, `-d`, `-g` flags). |
+| `eye list` | Show status of all tasks. |
+| `eye remove <id>` | Delete a task. |
+| `eye edit <id>` | Open task file in default editor. |
+| `eye in <time> <msg>` | Create a temporary one-off task. |
 
-### 高级管理 (`eye config`)
-*   `eye config language <en|zh>`：切换中英文。
-*   `eye config mode <unix|normal>`：切换输出风格（默认为Unix 模式）。
-*   `eye config update [--apply,--force]`：直接使用update为检查更新.--apply,--force用于应用在线更新。
-*   `eye config uninstall`：一键清理所有痕迹并卸载。
+### Control
+| Command | Description |
+| :--- | :--- |
+| `eye start [id\|@grp]` | Start/Resume tasks or groups. |
+| `eye stop [id\|@grp]` | Stop tasks. |
+| `eye pause [id\|@grp]` | Pause tasks (preserves state). |
+| `eye now [id]` | Trigger a task immediately. |
 
-### 音频管理 (`eye sound`)
-*   `eye sound list`：列出所有音效。
-*   `eye sound on|off`：全局开关提示音。
-*   `eye sound add <tag> <path>`：注册音效。
+### Daemon & Config
+| Command | Description |
+| :--- | :--- |
+| `eye daemon up/down` | Start/Stop the background service. |
+| `eye daemon status` | Show detailed service status. |
+| `eye config quiet on` | Enable silent mode (no stderr output). |
+| `eye sound on/off` | Global sound switch. |
 
----
+## 📂 Configuration
 
-## 🔗 高级集成
+- **Global Config**: `~/.config/eye/eye.conf`
+- **Task Files**: `~/.config/eye/tasks/`
+- **Logs**: `~/.local/state/eye/history.log`
 
-`eye` 设计之初就考虑了自动化。您可以轻松将其集成到 **Polybar**, **Waybar** 或 **i3blocks** 中。
+Tasks are simple Shell-sourced files. You can edit them manually:
+```bash
+NAME="Deep Work"
+INTERVAL=3000  # Seconds
+DURATION=0
+GROUP="work"
+SOUND_START="bell"
+```
 
-详见：[高级用法与集成手册](./doc/ADVANCED.md)
+## 🔄 Migration from v1.x
 
+Eye v2.0 automatically detects your old configuration and migrates it to a default task (`tasks/default`) upon first run. Your old `config` file is backed up as `config.bak`.
 
+## 📄 License
 
+MIT License

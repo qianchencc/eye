@@ -74,6 +74,59 @@ _cmd_add() {
     fi
 }
 
+_cmd_in() {
+    local time_str="$1"
+    shift
+    local msg="$*"
+    
+    if [[ -z "$time_str" ]]; then
+        msg_error "Usage: eye in <time> <message>"
+        return 1
+    fi
+    
+    local interval
+    interval=$(_parse_duration "$time_str") || return 1
+    
+    local task_id="temp_$(date +%s)_$RANDOM"
+    
+    # 设置临时任务属性
+    NAME="Reminder"
+    GROUP="temp"
+    INTERVAL="$interval"
+    DURATION=0
+    TARGET_COUNT=1
+    REMAIN_COUNT=1
+    IS_TEMP=true
+    SOUND_ENABLE=true
+    SOUND_START="default"
+    MSG_START="${msg:-Reminder}"
+    LAST_RUN=$(date +%s)
+    STATUS="running"
+    
+    if _save_task "$task_id"; then
+        msg_success "Reminder set for $time_str: $MSG_START"
+        # 立即启动后台扫描(如果守护进程未运行，此操作无影响；若运行中，它会自然扫到新文件)
+    fi
+}
+
+_cmd_edit() {
+    local task_id="$1"
+    local task_file="$TASKS_DIR/$task_id"
+    
+    if [[ ! -f "$task_file" ]]; then
+        msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"
+        return 1
+    fi
+    
+    local editor="${EDITOR:-nano}"
+    if ! command -v "$editor" >/dev/null 2>&1; then
+        editor="vi"
+    fi
+    
+    $editor "$task_file"
+    msg_success "Task updated."
+}
+
 _cmd_remove() {
     local task_id="$1"
     if [[ -f "$TASKS_DIR/$task_id" ]]; then
@@ -145,6 +198,29 @@ _cmd_stop() {
 
     _apply_to_target "$target" "STATUS" "stopped"
     msg_success "Stopped $target"
+}
+
+_cmd_pause() {
+    local target="${1:-@default}"
+    _apply_to_target "$target" "STATUS" "paused"
+    msg_success "Paused $target"
+}
+
+_cmd_resume() {
+    local target="${1:-@default}"
+    _apply_to_target "$target" "STATUS" "running"
+    msg_success "Resumed $target"
+}
+
+_cmd_now() {
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        msg_error "Usage: eye now <task_id>"
+        return 1
+    fi
+    
+    msg_info "Triggering $task_id immediately..."
+    _execute_task "$task_id"
 }
 
 _apply_to_target() {
