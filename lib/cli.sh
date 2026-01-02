@@ -166,7 +166,7 @@ _cmd_now() {
         fi
     fi
     msg_info "Triggering $task_id immediately..."
-    _execute_task "$task_id" &
+    ( _load_task "$task_id" && _execute_task "$task_id" ) &
 }
 
 _cmd_time() {
