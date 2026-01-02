@@ -71,21 +71,22 @@ _save_task() {
     local task_file="$TASKS_DIR/$task_id"
     local content
     
+    # Use printf %q to safely escape values for shell sourcing
     content=$(cat <<EOF
-NAME="$NAME"
-GROUP="$GROUP"
-INTERVAL="$INTERVAL"
-DURATION="$DURATION"
-TARGET_COUNT="$TARGET_COUNT"
-REMAIN_COUNT="$REMAIN_COUNT"
-IS_TEMP="$IS_TEMP"
-SOUND_ENABLE="$SOUND_ENABLE"
-SOUND_START="$SOUND_START"
-SOUND_END="$SOUND_END"
-MSG_START="$MSG_START"
-MSG_END="$MSG_END"
-LAST_RUN="$LAST_RUN"
-STATUS="$STATUS"
+NAME=$(printf %q "$NAME")
+GROUP=$(printf %q "$GROUP")
+INTERVAL=$(printf %q "$INTERVAL")
+DURATION=$(printf %q "$DURATION")
+TARGET_COUNT=$(printf %q "$TARGET_COUNT")
+REMAIN_COUNT=$(printf %q "$REMAIN_COUNT")
+IS_TEMP=$(printf %q "$IS_TEMP")
+SOUND_ENABLE=$(printf %q "$SOUND_ENABLE")
+SOUND_START=$(printf %q "$SOUND_START")
+SOUND_END=$(printf %q "$SOUND_END")
+MSG_START=$(printf %q "$MSG_START")
+MSG_END=$(printf %q "$MSG_END")
+LAST_RUN=$(printf %q "$LAST_RUN")
+STATUS=$(printf %q "$STATUS")
 EOF
 )
     _atomic_write "$task_file" "$content"

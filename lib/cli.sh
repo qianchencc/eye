@@ -199,9 +199,9 @@ _cmd_reset() {
     fi
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --time) do_time=true ;;
-            --count) do_count=true ;;
-            *) target="$1" ;;
+            --time) do_time=true ;; 
+            --count) do_count=true ;; 
+            *) target="$1" ;; 
         esac
         shift
     done
@@ -213,59 +213,108 @@ _cmd_add() {
     local task_id="$1"
     shift
     if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
-        msg_info "$MSG_HELP_ADD_USAGE"
-        return 1
+        msg_info "Usage: eye add <name> [options]"
+        msg_data ""
+        msg_data "Core Options:"
+        msg_data "  -i, --interval <time>  Interval (e.g. 20m, 1h)"
+        msg_data "  -d, --duration <time>  Duration (e.g. 20s, 0s for Pulse)"
+        msg_data "  -g, --group <name>     Group name (default: default)"
+        msg_data "  -c, --count <int>      Loop count (-1 for infinite)"
+        msg_data "  --temp                 Delete task after completion"
+        msg_data ""
+        msg_data "Content Options:"
+        msg_data "  --sound-start <tag>    Sound to play at start"
+        msg_data "  --sound-end <tag>      Sound to play at end (if duration > 0)"
+        msg_data "  --msg-start <text>     Notification text at start"
+        msg_data "  --msg-end <text>       Notification text at end"
+        msg_data ""
+        msg_data "Variables for messages (styles: {VAR} or \${VAR}):"
+        msg_data "  {DURATION}             Formatted duration (e.g., 20s)"
+        msg_data "  {INTERVAL}             Formatted interval"
+        msg_data "  {NAME}                 Task name"
+        msg_data "  {REMAIN_COUNT}         Remaining loop count"
+        return 0
     fi
     local task_file="$TASKS_DIR/$task_id"
     if [[ -f "$task_file" ]]; then
         msg_warn "Task '$task_id' already exists."
         if ! _prompt_confirm "Overwrite?"; then return; fi
     fi
-    local interval="20m" duration="20s" group="default" count="-1" is_temp="false"
-    local sound_enable="true" sound_start="default" sound_end="complete" msg_start="" msg_end=""
+    
+    # Initialize globals for _save_task
+    NAME="$task_id"
+    GROUP="default"
+    INTERVAL=1200
+    DURATION=20
+    TARGET_COUNT=-1
+    REMAIN_COUNT=-1
+    IS_TEMP=false
+    SOUND_ENABLE=true
+    SOUND_START="default"
+    SOUND_END="complete"
+    MSG_START=""
+    MSG_END=""
+    LAST_RUN=$(date +%s)
+    STATUS="running"
+
     if [[ $# -eq 0 ]]; then
-        msg_info "Creating task '$task_id'வைக்..."
-        _ask_val "$MSG_WIZARD_INTERVAL" "20m" interval
-        _ask_val "$MSG_WIZARD_DURATION" "20s" duration
-        local dur_sec=$(_parse_duration "$duration")
-        if [[ "$dur_sec" -eq 0 ]]; then
-            _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" sound_enable
-            [[ "$sound_enable" == "true" ]] && _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" sound_start
-            _ask_val "$MSG_WIZARD_MSG_START" "Time is up!" msg_start
-        else
-            _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" sound_enable
-            if [[ "$sound_enable" == "true" ]]; then
-                _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" sound_start
-                _ask_val "$(printf "$MSG_WIZARD_SOUND_END" "complete")" "complete" sound_end
+        msg_info "Creating task '$task_id'..."
+        
+        local tmp_val
+        _ask_val "$MSG_WIZARD_INTERVAL" "20m" tmp_val
+        INTERVAL=$(_parse_duration "$tmp_val") || return 1
+        
+        _ask_val "$MSG_WIZARD_DURATION" "20s" tmp_val
+        DURATION=$(_parse_duration "$tmp_val") || return 1
+        
+        if [[ "$DURATION" -eq 0 ]]; then
+            _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" SOUND_ENABLE
+            if [[ "$SOUND_ENABLE" == "true" ]]; then
+                 echo "Available sounds:"
+                 _cmd_sound list
+                 _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" SOUND_START
             fi
-            _ask_val "$MSG_WIZARD_MSG_START" "Look away for ${DURATION}!" msg_start
-            _ask_val "$MSG_WIZARD_MSG_END" "Break ended." msg_end
+            echo 'Hint: Use {REMAIN_COUNT} for remaining loops.'
+            _ask_val "$MSG_WIZARD_MSG_START" "Time is up!" MSG_START
+        else
+            _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" SOUND_ENABLE
+            if [[ "$SOUND_ENABLE" == "true" ]]; then
+                echo "Available sounds:"
+                _cmd_sound list
+                _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" SOUND_START
+                _ask_val "$(printf "$MSG_WIZARD_SOUND_END" "complete")" "complete" SOUND_END
+            fi
+            echo 'Hint: Use {DURATION} for duration, {REMAIN_COUNT} for remaining loops.'
+            _ask_val "$MSG_WIZARD_MSG_START" 'Look away for {DURATION}!' MSG_START
+            _ask_val "$MSG_WIZARD_MSG_END" "Break ended." MSG_END
         fi
-        _ask_val "Group" "default" group
-        _ask_val "$MSG_WIZARD_COUNT" "-1" count
-        [[ "$count" -gt 0 ]] && _ask_bool "$MSG_WIZARD_IS_TEMP" "n" is_temp
-        if ! _prompt_confirm "$MSG_WIZARD_CONFIRM"; then return; fi
+        _ask_val "Group" "default" GROUP
+        _ask_val "$MSG_WIZARD_COUNT" "-1" TARGET_COUNT
+        REMAIN_COUNT="$TARGET_COUNT"
+        if [[ "$TARGET_COUNT" -gt 0 ]]; then
+             _ask_bool "$MSG_WIZARD_IS_TEMP" "n" IS_TEMP
+        fi
+        if ! _prompt_confirm "$MSG_WIZARD_CONFIRM"; then 
+            msg_info "Creation cancelled."
+            return
+        fi
     else
         while [[ $# -gt 0 ]]; do
             case "$1" in
-                -i|--interval) interval="$2"; shift 2 ;;
-                -d|--duration) duration="$2"; shift 2 ;;
-                -g|--group)    group="$2"; shift 2 ;;
-                -c|--count)    count="$2"; shift 2 ;;
-                --temp)        is_temp="true"; shift ;;
-                --sound-start) sound_start="$2"; shift 2 ;;
-                --sound-end)   sound_end="$2"; shift 2 ;;
-                --msg-start)   msg_start="$2"; shift 2 ;;
-                --msg-end)     msg_end="$2"; shift 2 ;;
-                *) shift ;;
+                -i|--interval) INTERVAL=$(_parse_duration "$2"); shift 2 ;; 
+                -d|--duration) DURATION=$(_parse_duration "$2"); shift 2 ;; 
+                -g|--group)    GROUP="$2"; shift 2 ;; 
+                -c|--count)    TARGET_COUNT="$2"; REMAIN_COUNT="$2"; shift 2 ;; 
+                --temp)        IS_TEMP="true"; shift ;; 
+                --sound-start) SOUND_START="$2"; shift 2 ;; 
+                --sound-end)   SOUND_END="$2"; shift 2 ;; 
+                --msg-start)   MSG_START="$2"; shift 2 ;; 
+                --msg-end)     MSG_END="$2"; shift 2 ;; 
+                *) shift ;; 
             esac
         done
     fi
-    NAME="$task_id"; GROUP="$group"; INTERVAL=$(_parse_duration "$interval")
-    DURATION=$(_parse_duration "$duration"); TARGET_COUNT="$count"; REMAIN_COUNT="$count"
-    IS_TEMP="$is_temp"; SOUND_ENABLE="$sound_enable"; SOUND_START="$sound_start"
-    SOUND_END="$sound_end"; MSG_START="$msg_start"; MSG_END="$msg_end"
-    LAST_RUN=$(date +%s); STATUS="running"
+    
     if _save_task "$task_id"; then msg_success "$(printf "$MSG_TASK_CREATED" "$task_id")"; fi
 }
 
@@ -281,17 +330,17 @@ _cmd_edit() {
     if [[ $# -gt 0 ]]; then
         while [[ $# -gt 0 ]]; do
             case "$1" in
-                -i|--interval) INTERVAL=$(_parse_duration "$2"); shift 2 ;;
-                -d|--duration) DURATION=$(_parse_duration "$2"); shift 2 ;;
-                -g|--group)    GROUP="$2"; shift 2 ;;
-                -c|--count)    TARGET_COUNT="$2"; REMAIN_COUNT="$2"; shift 2 ;;
-                --temp)        IS_TEMP="true"; shift ;;
-                --no-temp)     IS_TEMP="false"; shift ;;
-                --sound-start) SOUND_START="$2"; shift 2 ;;
-                --sound-end)   SOUND_END="$2"; shift 2 ;;
-                --msg-start)   MSG_START="$2"; shift 2 ;;
-                --msg-end)     MSG_END="$2"; shift 2 ;;
-                *) shift ;;
+                -i|--interval) INTERVAL=$(_parse_duration "$2"); shift 2 ;; 
+                -d|--duration) DURATION=$(_parse_duration "$2"); shift 2 ;; 
+                -g|--group)    GROUP="$2"; shift 2 ;; 
+                -c|--count)    TARGET_COUNT="$2"; REMAIN_COUNT="$2"; shift 2 ;; 
+                --temp)        IS_TEMP="true"; shift ;; 
+                --no-temp)     IS_TEMP="false"; shift ;; 
+                --sound-start) SOUND_START="$2"; shift 2 ;; 
+                --sound-end)   SOUND_END="$2"; shift 2 ;; 
+                --msg-start)   MSG_START="$2"; shift 2 ;; 
+                --msg-end)     MSG_END="$2"; shift 2 ;; 
+                *) shift ;; 
             esac
         done
         _save_task "$task_id"
@@ -300,10 +349,11 @@ _cmd_edit() {
         msg_info "Editing '$task_id'வைக்..."
         local interval_fmt=$(_format_duration "$INTERVAL")
         local duration_fmt=$(_format_duration "$DURATION")
-        _ask_val "$MSG_WIZARD_INTERVAL" "$interval_fmt" interval_fmt
-        INTERVAL=$(_parse_duration "$interval_fmt")
-        _ask_val "$MSG_WIZARD_DURATION" "$duration_fmt" duration_fmt
-        DURATION=$(_parse_duration "$duration_fmt")
+        local tmp_val
+        _ask_val "$MSG_WIZARD_INTERVAL" "$interval_fmt" tmp_val
+        INTERVAL=$(_parse_duration "$tmp_val")
+        _ask_val "$MSG_WIZARD_DURATION" "$duration_fmt" tmp_val
+        DURATION=$(_parse_duration "$tmp_val")
         _ask_val "Group" "$GROUP" GROUP
         _ask_val "$MSG_WIZARD_COUNT" "$TARGET_COUNT" TARGET_COUNT
         [[ "$TARGET_COUNT" -gt 0 ]] && REMAIN_COUNT="$TARGET_COUNT" || REMAIN_COUNT="-1"
@@ -335,20 +385,43 @@ _cmd_status() {
     local daemon_active=false
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then daemon_active=true; fi
     if [ ! -t 1 ]; then echo "daemon_running=$daemon_active"; return; fi
+    
     [ "$daemon_active" = true ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
     echo ""
-    msg_info "$MSG_TASK_LIST_HEADER"
-    printf "% -15s % -10s % -10s % -10s % -10s\n" "$MSG_TASK_ID" "$MSG_TASK_GROUP" "$MSG_TASK_INTERVAL" "$MSG_TASK_STATUS" "NEXT"
-    echo "---------------------------------------------------------------"
+    
+    # Box drawing characters
+    local TL="┌" TR="┐" BL="└" BR="┘" H="─" V="│" T="┬" B="┴" M="┼" L="├" R="┤"
+    
+    # Column widths: ID(20), Group(10), Interval(10), Count(10), Status(10), NEXT(10)
+    # Note: total width = 20+10+10+10+10+10 + 7 separators = 77
+    local sep_line=$(printf "%s%77s%s" "$L" "" "$R" | tr ' ' "$H")
+    # Custom separators for the middle line
+    local mid_sep="├──────────────────────┼────────────┼────────────┼────────────┼────────────┼────────────┤"
+    local top_line="┌──────────────────────┬────────────┬────────────┬────────────┬────────────┬────────────┐"
+    local bot_line="└──────────────────────┴────────────┴────────────┴────────────┴────────────┴────────────┘"
+
+    msg_info "$top_line"
+    printf "${_C_BOLD}${V} % -20s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V}${_C_RESET}\n" "$MSG_TASK_ID" "$MSG_TASK_GROUP" "$MSG_TASK_INTERVAL" "$MSG_TASK_COUNT" "$MSG_TASK_STATUS" "NEXT"
+    msg_info "$mid_sep"
+
     shopt -s nullglob
     local tasks=("$TASKS_DIR"/*)
-    [[ ${#tasks[@]} -eq 0 ]] && { msg_info " (No tasks found)"; return; }
+    if [[ ${#tasks[@]} -eq 0 ]]; then
+        printf "${V} %-75s ${V}\n" " (No tasks found)"
+        msg_info "$bot_line"
+        return
+    fi
+
     (
         for task_file in "${tasks[@]}"; do
             [ -e "$task_file" ] || continue
             task_id=$(basename "$task_file")
             if _load_task "$task_id"; then
                 local next_run="-" sort_val="" current_time=$(date +%s) diff_sec=999999999
+                
+                # Format Status (No Emojis)
+                local status_fmt="${STATUS^}" # Capitalize first letter
+
                 if [[ "$STATUS" == "running" ]] && [ "$daemon_active" = true ]; then
                     diff_sec=$((INTERVAL - (current_time - LAST_RUN)))
                     [[ $diff_sec -lt 0 ]] && diff_sec=0
@@ -356,6 +429,22 @@ _cmd_status() {
                 elif [[ "$STATUS" == "running" ]]; then
                     next_run="(off)"
                 fi
+                
+                # Format Name
+                local name_display="$task_id"
+                [[ "$IS_TEMP" == "true" ]] && name_display="[T] $name_display"
+                if [ ${#name_display} -gt 20 ]; then
+                    name_display="${name_display:0:17}..."
+                fi
+
+                # Format Count
+                local count_fmt=""
+                if [ "$TARGET_COUNT" -eq -1 ]; then
+                    count_fmt="∞"
+                else
+                    count_fmt="$REMAIN_COUNT/$TARGET_COUNT"
+                fi
+
                 local mtime=$(date -r "$task_file" +%s)
                 case "$sort_key" in
                     name)    sort_val="$task_id" ;;
@@ -363,10 +452,14 @@ _cmd_status() {
                     next)    sort_val="$(printf "%012d" $diff_sec)" ;;
                     created) sort_val="$mtime" ;;
                 esac
-                printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$sort_val" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run"
+                printf "%s |${V} % -20s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V}\n" "$sort_val" "$name_display" "$GROUP" "$(_format_duration $INTERVAL)" "$count_fmt" "$status_fmt" "$next_run"
             fi
         done
-    ) | { if [ "$reverse" = true ]; then sort -rV; else sort -V; fi; } | cut -d'|' -f2-
+    ) | { 
+        if [ "$reverse" = true ]; then sort -rV; else sort -V; fi; 
+    } | cut -d'|' -f2-
+    
+    msg_info "$bot_line"
 }
 
 _cmd_version() {

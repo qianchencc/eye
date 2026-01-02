@@ -34,16 +34,21 @@
 ### 1.2 状态查询 (Status)
 
 **别名**: `list`
-**改进**: 增加了强大的排序和过滤参数。
+**改进**: 增加了强大的排序和过滤参数，优化了长名称显示。
 
 * **`status [target] [options]`**
 * **Usage**: `eye status`, `eye list`, `eye status @work --sort name -r`
 * **描述**: 显示守护进程状态及任务列表。
+* **输出列**:
+    * `ID`: 任务标识。若为临时任务，名称前会显示 `[T]`。
+    * `Group`: 组名。
+    * `Interval`: 触发间隔。
+    * `Count`: 运行计数。显示为 `当前/目标`，无限循环任务显示 `∞`。
+    * `Status`: 运行状态 (🟢 Running, 🔴 Stopped, ⏸️  Paused)。
+    * `NEXT`: 下次触发倒计时。守护进程未启动时显示 `(off)`。
 * **参数**:
-    * `--sort, -s <field>`: 排序依据。支持 `name` (名称), `created` (创建时间), `next` (下次触发时间), `group` (组名)。默认为 `next`。
-    * `--reverse, -r`: 倒序排列 (Descending)。
-    * `--long, -l`: 显示详细信息（包含 ID, Path 等）。
-    * `--json`: 输出 JSON 格式（用于脚本集成）。
+    * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
+    * `--reverse, -r`: 倒序排列。
 
 
 ### 1.3 任务增删改 (CRUD)
@@ -62,12 +67,15 @@
 * **内容参数 (新增)**:
     * `--sound-start <tag/path>`: 设置开始音效.
     * `--sound-end <tag/path>`: 设置结束音效 (仅当 `duration>0` 时有效)。
-    * `--msg-start "text"`: 设置开始通知文案 (支持变量 `${DURATION}`).
+    * `--msg-start "text"`: 设置开始通知文案。支持变量：`${VAR}` 或 `{VAR}` 风格（如 `${DURATION}` 或 `{DURATION}`）。
+    * 支持变量：`DURATION`, `INTERVAL`, `NAME`, `REMAIN_COUNT`。
     * `--msg-end "text"`: 设置结束通知文案。
 * **特殊行为**:
     * `--help`: 显示该命令的详细参数说明及示例，而不进行创建操作。
     * `--edit, -e`: **[Unix特性]** 创建后立即调用 `$EDITOR` 打开文件进行微调.
     * *(无参数): 进入交互式问答向导 (Wizard Mode)。*
+        * **改进**: 交互过程中会列出可用音效标签。
+        * **改进**: 编辑通知文案时提供可用变量提示（支持 `{VAR}` 和 `${VAR}` 风格）。
 
 
 * **`in <time> <message>`**

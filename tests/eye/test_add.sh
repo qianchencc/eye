@@ -10,3 +10,14 @@ else
     echo "FAIL: task file not created"; exit 1
 fi
 rm -f "$HOME/.config/eye/tasks/$TASK"
+
+# Test 0s duration
+TASK_ZERO="test_0s_$(date +%s)"
+$EYE add "$TASK_ZERO" -i 10s -d 0s
+if [ -f "$HOME/.config/eye/tasks/$TASK_ZERO" ]; then
+    source "$HOME/.config/eye/tasks/$TASK_ZERO"
+    [ "$DURATION" -eq 0 ] && echo "PASS: add with 0s duration" || { echo "FAIL: 0s duration verification"; exit 1; }
+else
+    echo "FAIL: 0s task file not created"; exit 1
+fi
+rm -f "$HOME/.config/eye/tasks/$TASK_ZERO"

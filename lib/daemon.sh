@@ -19,9 +19,26 @@ _release_lock() {
 # 变量替换
 _format_msg() {
     local msg="$1"
-    local duration_fmt=$(_format_duration "$DURATION")
-    msg="${msg//\$\{DURATION\}/$duration_fmt}"
-    msg="${msg//\$\{REMAIN_COUNT\}/$REMAIN_COUNT}"
+    local dur_fmt=$(_format_duration "$DURATION")
+    local int_fmt=$(_format_duration "$INTERVAL")
+    
+    # We support multiple styles: ${VAR}, {VAR}, [VAR]
+    local keys=("DURATION" "INTERVAL" "NAME" "REMAIN_COUNT")
+    local vals=("$dur_fmt" "$int_fmt" "$NAME" "$REMAIN_COUNT")
+    
+    for i in "${!keys[@]}"; do
+        local k="${keys[$i]}"
+        local v="${vals[$i]}"
+        
+        msg="${msg//\$\{$k\}/$v}"
+        msg="${msg//\{$k\}/$v}"
+        
+        # Lowercase fallback for brackets/braces
+        local kl="${k,,}"
+        msg="${msg//\{$kl\}/$v}"
+        msg="${msg//\[$kl\]/$v}"
+    done
+    
     echo "$msg"
 }
 

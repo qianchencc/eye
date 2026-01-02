@@ -110,29 +110,34 @@ _parse_duration() {
     # If pure number, default to seconds
     if [[ "$input" =~ ^[0-9]+$ ]]; then
         echo "$input"
-        return
+        return 0
     fi
 
     local total_seconds=0
+    local matched=0
     
     # Extract days (d)
     if [[ "$input" =~ ([0-9]+)d ]]; then
         total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 86400))
+        matched=1
     fi
     # Extract hours (h)
     if [[ "$input" =~ ([0-9]+)h ]]; then
         total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 3600))
+        matched=1
     fi
     # Extract minutes (m)
     if [[ "$input" =~ ([0-9]+)m ]]; then
         total_seconds=$((total_seconds + ${BASH_REMATCH[1]} * 60))
+        matched=1
     fi
     # Extract seconds (s)
     if [[ "$input" =~ ([0-9]+)s ]]; then
         total_seconds=$((total_seconds + ${BASH_REMATCH[1]}))
+        matched=1
     fi
 
-    if [ "$total_seconds" -eq 0 ]; then
+    if [[ $matched -eq 0 ]]; then
         # Check if localized message exists, otherwise generic
         msg_error "${MSG_ERROR_INVALID_TIME_FORMAT:-Error: Invalid time format}"
         return 1
@@ -152,15 +157,17 @@ _format_duration() {
     [[ $D -gt 0 ]] && printf '%dd ' $D
     [[ $H -gt 0 ]] && printf '%dh ' $H
     [[ $M -gt 0 ]] && printf '%dm ' $M
-    [[ $D -eq 0 && $H -eq 0 && $M -eq 0 ]] && printf '%ds' $S || printf '%ds' $S
+    printf '%ds' $S
 }
 
-# Prompt for confirmation [y/N]
+# Prompt for confirmation [Y/n]
 _prompt_confirm() {
     local msg="$1"
     local answer
-    printf "${_C_YELLOW}%s${_C_RESET}" "$msg" >&2
+    printf "${_C_YELLOW}%s [Y/n]: ${_C_RESET}" "$msg" >&2
     read -r answer
+    # Default to Yes if empty
+    [[ -z "$answer" ]] && return 0
     if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
         return 0
     fi
@@ -173,17 +180,24 @@ _ask_val() {
     local prompt="$1"
     local default="$2"
     local var_name="$3"
+    local input
     
     if [ -n "$default" ]; then
         printf "%s [%s]: " "$prompt" "$default"
     else
         printf "%s: " "$prompt"
     fi
+    
     read -r input < /dev/tty
     if [ -z "$input" ]; then
-        eval "$var_name=\"$default\""
+        printf -v "$var_name" "%s" "$default"
     else
-        eval "$var_name=\"$input\""
+        # Trim surrounding quotes
+        input="${input#\"}"
+        input="${input%\"}"
+        input="${input#\'}"
+        input="${input%\'}"
+        printf -v "$var_name" "%s" "$input"
     fi
 }
 
@@ -191,10 +205,11 @@ _ask_bool() {
     local prompt="$1"
     local default="$2" # "y" or "n"
     local var_name="$3"
+    local input
     
     local yn="[y/n]"
-    [ "$default" == "y" ] && yn="[Y/n]"
-    [ "$default" == "n" ] && yn="[y/N]"
+    [[ "$default" =~ ^[Yy] ]] && yn="[Y/n]"
+    [[ "$default" =~ ^[Nn] ]] && yn="[y/N]"
     
     printf "%s %s: " "$prompt" "$yn"
     read -r input < /dev/tty
@@ -203,8 +218,8 @@ _ask_bool() {
     fi
     
     if [[ "$input" =~ ^[Yy] ]]; then
-        eval "$var_name=true"
+        printf -v "$var_name" "%s" "true"
     else
-        eval "$var_name=false"
+        printf -v "$var_name" "%s" "false"
     fi
 }
