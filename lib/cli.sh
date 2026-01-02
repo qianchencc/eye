@@ -52,7 +52,10 @@ _apply_to_tasks() {
         matched=1
         _load_task "$task_id" # Reload to be sure
         "$callback" "$task_id" "${args[@]}"
-        _save_task "$task_id"
+        # Only save if the task still exists (callbacks like remove delete it)
+        if [ -f "$TASKS_DIR/$task_id" ]; then
+            _save_task "$task_id"
+        fi
     done
 
     if [ $matched -eq 0 ]; then
@@ -66,44 +69,25 @@ _cb_set_status() {
     local id="$1"
     local new_status="$2"
     STATUS="$new_status"
-    # If resuming/starting, reset LAST_RUN?
-    # Spec says "start ... used for start default task".
-    # Usually start implies active.
     msg_info "Task $id -> $new_status"
 }
 
 _cb_time_shift() {
     local id="$1"
     local delta_str="$2"
-    # delta_str e.g. -10m, +1h, 20s
     local sign="${delta_str:0:1}"
     local val_str="$delta_str"
     
     if [[ "$sign" == "+" || "$sign" == "-" ]]; then
         val_str="${delta_str:1}"
     else
-        sign="+" # Default forward? Or set? Spec says "forward... use -10m to backward"
+        sign="+"
     fi
     
     local seconds=$(_parse_duration "$val_str")
     if [ $? -ne 0 ]; then return; fi
     
     if [[ "$sign" == "-" ]]; then
-        # Backward: Increase LAST_RUN (so diff becomes smaller? No.)
-        # now - LAST_RUN = elapsed.
-        # We want elapsed to be smaller (backward time) -> LAST_RUN bigger?
-        # Wait. 
-        # "Fast forward" -> elapsed bigger -> LAST_RUN smaller.
-        # "Backward" -> elapsed smaller -> LAST_RUN bigger.
-        
-        # Spec: "Fast forward default task ... use -10m to backward"
-        # So +10m means we want to trigger sooner? Or we pretend 10m passed?
-        # Usually "Time +10m" means "Add 10m to elapsed time".
-        # Elapsed = Now - LAST_RUN.
-        # NewElapsed = Elapsed + 10m.
-        # Now - NewLastRun = (Now - OldLastRun) + 10m
-        # NewLastRun = OldLastRun - 10m.
-        
         LAST_RUN=$((LAST_RUN + seconds))
     else
         LAST_RUN=$((LAST_RUN - seconds))
@@ -142,7 +126,6 @@ _cb_reset() {
 
 _cmd_start() {
     local target="${1:-@$(_get_default_target)}"
-    # Spec: "start, stop @<group>: used for start/stop default task or specific group"
     _apply_to_tasks "$target" _cb_set_status "running"
 }
 
@@ -153,14 +136,11 @@ _cmd_stop() {
 
 _cmd_pause() {
     local target="$1"
-    local all_flag=false
-    
     if [[ "$target" == "--all" || "$target" == "-a" ]]; then
         target="--all"
     elif [[ -z "$target" ]]; then
         target="@$(_get_default_target)"
     fi
-    
     _apply_to_tasks "$target" _cb_set_status "paused"
 }
 
@@ -171,15 +151,12 @@ _cmd_resume() {
     elif [[ -z "$target" ]]; then
         target="@$(_get_default_target)"
     fi
-    
     _apply_to_tasks "$target" _cb_set_status "running"
 }
 
 _cmd_now() {
     local task_id="$1"
     if [[ -z "$task_id" ]]; then
-        # Default task? Spec: "optional <task>"
-        # If no task, try default task
         local def=$(_get_default_target)
         if [[ -f "$TASKS_DIR/$def" ]]; then
              task_id="$def"
@@ -188,35 +165,27 @@ _cmd_now() {
              return 1
         fi
     fi
-    
     msg_info "Triggering $task_id immediately..."
-    _execute_task "$task_id"
+    _execute_task "$task_id" &
 }
 
 _cmd_time() {
     local delta="$1"
     local target="${2:-@$(_get_default_target)}"
-    
     if [[ -z "$delta" || "$delta" == "--help" || "$delta" == "-h" ]]; then
         msg_info "Usage: eye time <delta> [task_id|@group|--all]"
-        msg_data "Example: eye time +10m (Fast forward)"
-        msg_data "Example: eye time -5m  (Backward)"
         return 0
     fi
-    
     _apply_to_tasks "$target" _cb_time_shift "$delta"
 }
 
 _cmd_count() {
     local delta="$1"
     local target="${2:-@$(_get_default_target)}"
-    
     if [[ -z "$delta" || "$delta" == "--help" || "$delta" == "-h" ]]; then
         msg_info "Usage: eye count <delta> [task_id|@group|--all]"
-        msg_data "Example: eye count -1 (Reduce remain count)"
         return 0
     fi
-    
     _apply_to_tasks "$target" _cb_count_shift "$delta"
 }
 
@@ -224,30 +193,18 @@ _cmd_reset() {
     local target=""
     local do_time=false
     local do_count=false
-    
     if [[ "$1" == "--help" || "$1" == "-h" ]]; then
         msg_info "Usage: eye reset [target] --time --count"
-        msg_data "Example: eye reset @work --time"
         return 0
     fi
-
-    # Parse args
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --time) do_time=true ;; 
-            --count) do_count=true ;; 
-            -*) msg_error "Unknown option: $1"; return 1 ;; 
-            *) target="$1" ;; 
+            --time) do_time=true ;;
+            --count) do_count=true ;;
+            *) target="$1" ;;
         esac
         shift
     done
-    
-    if [[ "$do_time" == "false" && "$do_count" == "false" ]]; then
-        msg_error "Error: Please specify what to reset using --time or --count"
-        msg_info "Usage: eye reset [target] --time --count"
-        return 1
-    fi
-    
     target="${target:-@$(_get_default_target)}"
     _apply_to_tasks "$target" _cb_reset "$do_time" "$do_count"
 }
@@ -255,77 +212,40 @@ _cmd_reset() {
 _cmd_add() {
     local task_id="$1"
     shift
-    
     if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
         msg_info "$MSG_HELP_ADD_USAGE"
         return 1
     fi
-
     local task_file="$TASKS_DIR/$task_id"
     if [[ -f "$task_file" ]]; then
         msg_warn "Task '$task_id' already exists."
-        if ! _prompt_confirm "Overwrite?"; then
-            return
-        fi
+        if ! _prompt_confirm "Overwrite?"; then return; fi
     fi
-
-    # Defaults
-    local interval="20m"
-    local duration="20s"
-    local group="default"
-    local count="-1"
-    local is_temp="false"
-    local sound_enable="true"
-    local sound_start="default"
-    local sound_end="complete"
-    local msg_start=""
-    local msg_end=""
-
+    local interval="20m" duration="20s" group="default" count="-1" is_temp="false"
+    local sound_enable="true" sound_start="default" sound_end="complete" msg_start="" msg_end=""
     if [[ $# -eq 0 ]]; then
-        # === Interactive Wizard ===
-        msg_info "Creating task '$task_id'..."
-
-        # 1. Timing
+        msg_info "Creating task '$task_id'வைக்..."
         _ask_val "$MSG_WIZARD_INTERVAL" "20m" interval
         _ask_val "$MSG_WIZARD_DURATION" "20s" duration
-        
         local dur_sec=$(_parse_duration "$duration")
-        
-        # 2. Sound & Messages
         if [[ "$dur_sec" -eq 0 ]]; then
-            # Pulse Task
-            echo ">> Pulse Task (No duration)"
             _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" sound_enable
-            if [[ "$sound_enable" == "true" ]]; then
-                 _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" sound_start
-            fi
+            [[ "$sound_enable" == "true" ]] && _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" sound_start
             _ask_val "$MSG_WIZARD_MSG_START" "Time is up!" msg_start
         else
-            # Periodic Task
-            echo ">> Periodic Task"
             _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" sound_enable
-             if [[ "$sound_enable" == "true" ]]; then
-                 _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" sound_start
-                 _ask_val "$(printf "$MSG_WIZARD_SOUND_END" "complete")" "complete" sound_end
+            if [[ "$sound_enable" == "true" ]]; then
+                _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" sound_start
+                _ask_val "$(printf "$MSG_WIZARD_SOUND_END" "complete")" "complete" sound_end
             fi
-            _ask_val "$MSG_WIZARD_MSG_START" "Look away for \${DURATION}!" msg_start
+            _ask_val "$MSG_WIZARD_MSG_START" "Look away for ${DURATION}!" msg_start
             _ask_val "$MSG_WIZARD_MSG_END" "Break ended." msg_end
         fi
-        
-        # 3. Group
         _ask_val "Group" "default" group
-
-        # 4. Count & Lifecycle
         _ask_val "$MSG_WIZARD_COUNT" "-1" count
-        if [[ "$count" -gt 0 ]]; then
-             _ask_bool "$MSG_WIZARD_IS_TEMP" "n" is_temp
-        fi
-
-        if ! _prompt_confirm "$MSG_WIZARD_CONFIRM"; then
-            return
-        fi
+        [[ "$count" -gt 0 ]] && _ask_bool "$MSG_WIZARD_IS_TEMP" "n" is_temp
+        if ! _prompt_confirm "$MSG_WIZARD_CONFIRM"; then return; fi
     else
-        # === Flag Parsing ===
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 -i|--interval) interval="$2"; shift 2 ;;
@@ -333,58 +253,32 @@ _cmd_add() {
                 -g|--group)    group="$2"; shift 2 ;;
                 -c|--count)    count="$2"; shift 2 ;;
                 --temp)        is_temp="true"; shift ;;
-                --sound-on)    sound_enable="true"; shift ;;
-                --sound-off)   sound_enable="false"; shift ;;
                 --sound-start) sound_start="$2"; shift 2 ;;
                 --sound-end)   sound_end="$2"; shift 2 ;;
                 --msg-start)   msg_start="$2"; shift 2 ;;
                 --msg-end)     msg_end="$2"; shift 2 ;;
-                *) msg_warn "Unknown option: $1"; shift ;;
+                *) shift ;;
             esac
         done
     fi
-
-    # Save
-    NAME="$task_id"
-    GROUP="$group"
-    INTERVAL=$(_parse_duration "$interval")
-    DURATION=$(_parse_duration "$duration")
-    TARGET_COUNT="$count"
-    REMAIN_COUNT="$count"
-    IS_TEMP="$is_temp"
-    SOUND_ENABLE="$sound_enable"
-    SOUND_START="$sound_start"
-    SOUND_END="$sound_end"
-    MSG_START="$msg_start"
-    MSG_END="$msg_end"
-    LAST_RUN=$(date +%s)
-    STATUS="running"
-
-    if _save_task "$task_id"; then
-        msg_success "$(printf "$MSG_TASK_CREATED" "$task_id")"
-    fi
+    NAME="$task_id"; GROUP="$group"; INTERVAL=$(_parse_duration "$interval")
+    DURATION=$(_parse_duration "$duration"); TARGET_COUNT="$count"; REMAIN_COUNT="$count"
+    IS_TEMP="$is_temp"; SOUND_ENABLE="$sound_enable"; SOUND_START="$sound_start"
+    SOUND_END="$sound_end"; MSG_START="$msg_start"; MSG_END="$msg_end"
+    LAST_RUN=$(date +%s); STATUS="running"
+    if _save_task "$task_id"; then msg_success "$(printf "$MSG_TASK_CREATED" "$task_id")"; fi
 }
 
 _cmd_edit() {
     local task_id="$1"
     shift
-
     if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
-        msg_info "Usage: eye edit <task_id> [options]"
-        return 1
+        msg_info "Usage: eye edit <task_id> [options]"; return 1
     fi
-
     local task_file="$TASKS_DIR/$task_id"
-    
-    if [[ ! -f "$task_file" ]]; then
-        msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"
-        return 1
-    fi
-    
+    if [[ ! -f "$task_file" ]]; then msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"; return 1; fi
     _load_task "$task_id"
-    
     if [[ $# -gt 0 ]]; then
-        # Flags Edit
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 -i|--interval) INTERVAL=$(_parse_duration "$2"); shift 2 ;;
@@ -393,8 +287,6 @@ _cmd_edit() {
                 -c|--count)    TARGET_COUNT="$2"; REMAIN_COUNT="$2"; shift 2 ;;
                 --temp)        IS_TEMP="true"; shift ;;
                 --no-temp)     IS_TEMP="false"; shift ;;
-                --sound-on)    SOUND_ENABLE="true"; shift ;;
-                --sound-off)   SOUND_ENABLE="false"; shift ;;
                 --sound-start) SOUND_START="$2"; shift 2 ;;
                 --sound-end)   SOUND_END="$2"; shift 2 ;;
                 --msg-start)   MSG_START="$2"; shift 2 ;;
@@ -405,181 +297,100 @@ _cmd_edit() {
         _save_task "$task_id"
         msg_success "Task updated."
     else
-        # Interactive Edit (Wizard-like, pre-filled)
-        msg_info "Editing '$task_id' (Enter to keep current value)..."
-        
+        msg_info "Editing '$task_id'வைக்..."
         local interval_fmt=$(_format_duration "$INTERVAL")
         local duration_fmt=$(_format_duration "$DURATION")
-        
         _ask_val "$MSG_WIZARD_INTERVAL" "$interval_fmt" interval_fmt
         INTERVAL=$(_parse_duration "$interval_fmt")
-        
         _ask_val "$MSG_WIZARD_DURATION" "$duration_fmt" duration_fmt
         DURATION=$(_parse_duration "$duration_fmt")
-        
-        # Check Pulse/Periodic again
-        if [[ "$DURATION" -eq 0 ]]; then
-             echo ">> Pulse Task Mode"
-             _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "$SOUND_ENABLE" SOUND_ENABLE
-             if [[ "$SOUND_ENABLE" == "true" ]]; then
-                 _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "$SOUND_START")" "$SOUND_START" SOUND_START
-             fi
-             _ask_val "$MSG_WIZARD_MSG_START" "${MSG_START:-Time is up!}" MSG_START
-        else
-             echo ">> Periodic Task Mode"
-             _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "$SOUND_ENABLE" SOUND_ENABLE
-             if [[ "$SOUND_ENABLE" == "true" ]]; then
-                 _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "$SOUND_START")" "$SOUND_START" SOUND_START
-                 _ask_val "$(printf "$MSG_WIZARD_SOUND_END" "$SOUND_END")" "$SOUND_END" SOUND_END
-             fi
-             _ask_val "$MSG_WIZARD_MSG_START" "${MSG_START:-Look away!}" MSG_START
-             _ask_val "$MSG_WIZARD_MSG_END" "${MSG_END:-Break ended.}" MSG_END
-        fi
-        
         _ask_val "Group" "$GROUP" GROUP
         _ask_val "$MSG_WIZARD_COUNT" "$TARGET_COUNT" TARGET_COUNT
-        # Update REMAIN_COUNT only if TARGET changed? Or reset it? 
-        # Usually edit resets count if user explicitly changes it, but here we just set what user wants.
-        # Let's ask if they want to reset remaining count? 
-        # For simplicity, if they change target count, we probably should reset remaining count, 
-        # but difficult to detect change easily in bash without old var.
-        # Let's just update REMAIN_COUNT to TARGET_COUNT if TARGET_COUNT > 0
-        if [[ "$TARGET_COUNT" -gt 0 ]]; then
-             REMAIN_COUNT="$TARGET_COUNT"
-             _ask_bool "$MSG_WIZARD_IS_TEMP" "$IS_TEMP" IS_TEMP
-        else
-             REMAIN_COUNT="-1"
-        fi
-        
-        if _save_task "$task_id"; then
-             msg_success "Task updated."
-        fi
+        [[ "$TARGET_COUNT" -gt 0 ]] && REMAIN_COUNT="$TARGET_COUNT" || REMAIN_COUNT="-1"
+        if _save_task "$task_id"; then msg_success "Task updated."; fi
     fi
 }
 
-_cmd_list() {
-    msg_info "$MSG_TASK_LIST_HEADER"
-    printf "% -15s % -10s % -10s % -10s % -10s\n" "$MSG_TASK_ID" "$MSG_TASK_GROUP" "$MSG_TASK_INTERVAL" "$MSG_TASK_STATUS" "NEXT"
-    echo "---------------------------------------------------------------"
-    
-    for task_file in "$TASKS_DIR"/*;
-    do
-        [ -e "$task_file" ] || continue
-        task_id=$(basename "$task_file")
-        if _load_task "$task_id"; then
-            local next_run="-"
-            if [[ "$STATUS" == "running" ]]; then
-                local current_time=$(date +%s)
-                local diff=$((INTERVAL - (current_time - LAST_RUN)))
-                [[ $diff -lt 0 ]] && diff=0
-                next_run=$(_format_duration $diff)
-            fi
-            printf "% -15s % -10s % -10s % -10s % -10s\n" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run"
-        fi
-    done
+_cmd_remove() {
+    local target="$1"
+    [[ -z "$target" ]] && { msg_error "Usage: eye remove <task_id|@group>"; return 1; }
+    _apply_to_tasks "$target" _cb_remove
+}
+
+_cb_remove() {
+    local id="$1"
+    rm -f "$TASKS_DIR/$id"
+    msg_success "Task '$id' removed."
 }
 
 _cmd_status() {
-    local sort_key="group"
-    
+    local sort_key="next" reverse=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --sort)
-                case "$2" in
-                    name|group|time) sort_key="$2"; shift 2 ;;
-                    *) msg_error "Invalid sort key: $2 (name|group|time)"; return 1 ;;
-                esac
-                ;;
+            --sort|-s) sort_key="$2"; shift 2 ;;
+            --reverse|-r) reverse=true; shift ;;
             *) shift ;;
         esac
     done
-    
-    if [ ! -t 1 ]; then
-        echo "daemon_running=$( [ -f "$PID_FILE" ] && echo true || echo false )"
-        return
-    fi
-    
-    # Daemon Status
-    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-        msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))"
-    else
-        msg_error "● Daemon: Inactive"
-    fi
-    
+    local daemon_active=false
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then daemon_active=true; fi
+    if [ ! -t 1 ]; then echo "daemon_running=$daemon_active"; return; fi
+    [ "$daemon_active" = true ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
     echo ""
-    
-    # Header
     msg_info "$MSG_TASK_LIST_HEADER"
     printf "% -15s % -10s % -10s % -10s % -10s\n" "$MSG_TASK_ID" "$MSG_TASK_GROUP" "$MSG_TASK_INTERVAL" "$MSG_TASK_STATUS" "NEXT"
     echo "---------------------------------------------------------------"
-
-    # Data Collection & Sort
     shopt -s nullglob
     local tasks=("$TASKS_DIR"/*)
-    if [ ${#tasks[@]} -eq 0 ]; then
-        msg_info " (No tasks found)"
-        return
-    fi
-
+    [[ ${#tasks[@]} -eq 0 ]] && { msg_info " (No tasks found)"; return; }
     (
         for task_file in "${tasks[@]}"; do
             [ -e "$task_file" ] || continue
             task_id=$(basename "$task_file")
             if _load_task "$task_id"; then
-                local next_run="-"
-                if [[ "$STATUS" == "running" ]]; then
-                    local current_time=$(date +%s)
-                    local diff=$((INTERVAL - (current_time - LAST_RUN)))
-                    [[ $diff -lt 0 ]] && diff=0
-                    next_run=$(_format_duration $diff)
+                local next_run="-" sort_val="" current_time=$(date +%s) diff_sec=999999999
+                if [[ "$STATUS" == "running" ]] && [ "$daemon_active" = true ]; then
+                    diff_sec=$((INTERVAL - (current_time - LAST_RUN)))
+                    [[ $diff_sec -lt 0 ]] && diff_sec=0
+                    next_run=$(_format_duration $diff_sec)
+                elif [[ "$STATUS" == "running" ]]; then
+                    next_run="(off)"
                 fi
-                
-                # Format: [SortValue] TaskLine
                 local mtime=$(date -r "$task_file" +%s)
                 case "$sort_key" in
-                    name)  printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$task_id" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run" ;;
-                    time)  printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$mtime" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run" ;;
-                    group) printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$GROUP" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run" ;;
+                    name)    sort_val="$task_id" ;;
+                    group)   sort_val="$GROUP" ;;
+                    next)    sort_val="$(printf "%012d" $diff_sec)" ;;
+                    created) sort_val="$mtime" ;;
                 esac
+                printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$sort_val" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run"
             fi
         done
-    ) | sort -V | cut -d'|' -f2-
+    ) | { if [ "$reverse" = true ]; then sort -rV; else sort -V; fi; } | cut -d'|' -f2-
+}
+
+_cmd_version() {
+    echo "eye version $EYE_VERSION"
 }
 
 _cmd_in() {
     local time_str="$1"
     shift
     local msg="$*"
-    # ... reused existing logic ...
-    if [[ -z "$time_str" ]]; then
-        msg_error "Usage: eye in <time> <message>"
-        return 1
-    fi
+    if [[ -z "$time_str" ]]; then msg_error "Usage: eye in <time> <message>"; return 1; fi
     local interval
     interval=$(_parse_duration "$time_str") || return 1
     local task_id="temp_$(date +%s)_$RANDOM"
-    NAME="Reminder"
-    GROUP="temp"
-    INTERVAL="$interval"
-    DURATION=0
-    TARGET_COUNT=1
-    REMAIN_COUNT=1
-    IS_TEMP=true
-    SOUND_ENABLE=true
-    SOUND_START="default"
-    MSG_START="${msg:-Reminder}"
-    LAST_RUN=$(date +%s)
-    STATUS="running"
-    if _save_task "$task_id"; then
-        msg_success "Reminder set for $time_str: $MSG_START"
-    fi
+    NAME="Reminder"; GROUP="temp"; INTERVAL="$interval"; DURATION=0; TARGET_COUNT=1; REMAIN_COUNT=1
+    IS_TEMP=true; SOUND_ENABLE=true; SOUND_START="default"; MSG_START="${msg:-Reminder}"
+    LAST_RUN=$(date +%s); STATUS="running"
+    if _save_task "$task_id"; then msg_success "Reminder set for $time_str: $MSG_START"; fi
 }
 
 _cmd_daemon() {
     local cmd="$1"
     shift
     _load_global_config
-
     case "$cmd" in
         up)
             if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
@@ -602,21 +413,12 @@ _cmd_daemon() {
             ;; 
         default)
             local task="$1"
-            if [[ -z "$task" ]]; then
-                echo "Current default task: ${DEFAULT_TASK:-default}"
-            else
-                DEFAULT_TASK="$task"
-                _save_global_config
-                msg_success "Default task set to: $task"
-            fi
+            if [[ -z "$task" ]]; then echo "Current default task: ${DEFAULT_TASK:-default}"
+            else DEFAULT_TASK="$task"; _save_global_config; msg_success "Default task set to: $task"; fi
             ;; 
         enable)
-            # Create systemd service
             mkdir -p "$SYSTEMD_DIR"
-            # Resolve absolute path to bin/eye (or where it is installed)
-            local bin_path=$(readlink -f "$0") # $0 is usually the script
-            # Note: In dev mode via symlink, this works. In prod, it works.
-            
+            local bin_path=$(readlink -f "$0")
             cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Eye Protection Daemon (v2.0)
@@ -634,36 +436,15 @@ EOF
             systemctl --user enable eye.service
             msg_success "Autostart enabled (Systemd)."
             ;; 
-        disable)
-            systemctl --user disable eye.service
-            rm -f "$SERVICE_FILE"
-            systemctl --user daemon-reload
-            msg_success "Autostart disabled."
-            ;; 
-        quiet)
-            GLOBAL_QUIET="$1"
-            _save_global_config
-            msg_success "Quiet mode: $GLOBAL_QUIET"
-            ;; 
-        root-cmd)
-            ROOT_CMD="$1"
-            _save_global_config
-            msg_success "Root command set to: $ROOT_CMD"
-            ;; 
-        language)
-             LANGUAGE="$1"
-             _save_global_config
-             msg_success "Language set to: $LANGUAGE"
-             ;; 
-        help|*)
-            echo "$MSG_HELP_DAEMON_HEADER"
-            echo -e "$MSG_HELP_DAEMON_CMDS"
-            ;; 
+        disable) systemctl --user disable eye.service; rm -f "$SERVICE_FILE"; systemctl --user daemon-reload; msg_success "Autostart disabled." ;; 
+        quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;; 
+        root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;; 
+        language) LANGUAGE="$1"; _save_global_config; msg_success "Language set to: $LANGUAGE" ;; 
+        help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;; 
     esac
 }
 
 _cmd_usage() {
-    # Main Help
     echo "$MSG_USAGE_HEADER"
     echo ""
     echo "$MSG_USAGE_CORE"

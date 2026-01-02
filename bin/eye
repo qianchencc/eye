@@ -85,7 +85,7 @@ shift
 
 case "$CMD" in
     add)        _cmd_add "$@" ;;
-    list)       _cmd_list "$@" ;;
+    list)       _cmd_status "$@" ;;
     remove)     _cmd_remove "$@" ;;
     edit)       _cmd_edit "$@" ;;
     in)         _cmd_in "$@" ;;

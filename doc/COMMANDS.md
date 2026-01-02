@@ -33,10 +33,11 @@
 
 ### 1.2 状态查询 (Status)
 
+**别名**: `list`
 **改进**: 增加了强大的排序和过滤参数。
 
 * **`status [target] [options]`**
-* **Usage**: `eye status`, `eye status @work --sort name -r`
+* **Usage**: `eye status`, `eye list`, `eye status @work --sort name -r`
 * **描述**: 显示守护进程状态及任务列表。
 * **参数**:
     * `--sort, -s <field>`: 排序依据。支持 `name` (名称), `created` (创建时间), `next` (下次触发时间), `group` (组名)。默认为 `next`。
@@ -47,19 +48,26 @@
 
 ### 1.3 任务增删改 (CRUD)
 
-**改进**: 增强了 `add` 的交互性与脚本化支持。
+**改进**: 增强了 `add` 的交互性与脚本化支持，支持一步配置所有任务属性。
 
 * **`add <name> [options]`**
-* **Usage**: `eye add water -i 1h`, `eye add new_task --edit`
+* **Usage**: `eye add water -i 1h --sound-start bell`, `eye add task1 --help`
 * **描述**: 创建新任务。
-* **参数**:
-    * `--interval, -i <time>`: 间隔 (如 `20m`)。
+* **核心参数**:
+    * `--interval, -i <time>`: 间隔 (如 `20m`, `1h`)。[必填] (除非进入交互模式)。
     * `--duration, -d <time>`: 持续时间 (默认 `0`)。
-    * `--group, -g <name>`: 组名。
-    * `--count, -c <int>`: 计数限制。`-1`为无限循环。
-    * `--temp`: 标记为临时任务。
-    * `--edit, -e`: **[Unix特性]** 创建模板文件并立即调用 `$EDITOR` 打开，保存即生效。
-    * *(不带任何参数时进入交互式模式)*
+    * `--group, -g <name>`: 组名 (默认 `default`)。
+    * `--count, -c <int>`: 计数限制 (默认 `-1` 无限)。
+    * `--temp`: 标记为临时任务 (计数归零后删除)。
+* **内容参数 (新增)**:
+    * `--sound-start <tag/path>`: 设置开始音效.
+    * `--sound-end <tag/path>`: 设置结束音效 (仅当 `duration>0` 时有效)。
+    * `--msg-start "text"`: 设置开始通知文案 (支持变量 `${DURATION}`).
+    * `--msg-end "text"`: 设置结束通知文案。
+* **特殊行为**:
+    * `--help`: 显示该命令的详细参数说明及示例，而不进行创建操作。
+    * `--edit, -e`: **[Unix特性]** 创建后立即调用 `$EDITOR` 打开文件进行微调.
+    * *(无参数): 进入交互式问答向导 (Wizard Mode)。*
 
 
 * **`in <time> <message>`**
