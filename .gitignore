@@ -10,3 +10,8 @@ config/custom_sounds.map
 *.log
 last_notified
 pause_output.txttests/
+
+# 忽略重构计划文档
+refactoring_plan.md
+roadmap.md
+GEMINI.md
