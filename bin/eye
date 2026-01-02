@@ -71,7 +71,12 @@ done
 set -- "${ARGS[@]}"
 
 if [[ -z "$1" ]]; then
-    _cmd_usage
+    # Respect ROOT_CMD setting (trim whitespace)
+    CLEAN_ROOT_CMD=$(echo "${ROOT_CMD:-help}" | xargs)
+    case "$CLEAN_ROOT_CMD" in
+        status) _cmd_status ;;
+        *)      _cmd_usage ;;
+    esac
     exit 0
 fi
 

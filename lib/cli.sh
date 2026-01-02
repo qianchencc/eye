@@ -197,9 +197,11 @@ _cmd_time() {
     local delta="$1"
     local target="${2:-@$(_get_default_target)}"
     
-    if [[ -z "$delta" ]]; then
-        msg_error "Usage: eye time <delta> [task]"
-        return 1
+    if [[ -z "$delta" || "$delta" == "--help" || "$delta" == "-h" ]]; then
+        msg_info "Usage: eye time <delta> [task_id|@group|--all]"
+        msg_data "Example: eye time +10m (Fast forward)"
+        msg_data "Example: eye time -5m  (Backward)"
+        return 0
     fi
     
     _apply_to_tasks "$target" _cb_time_shift "$delta"
@@ -209,9 +211,10 @@ _cmd_count() {
     local delta="$1"
     local target="${2:-@$(_get_default_target)}"
     
-    if [[ -z "$delta" ]]; then
-        msg_error "Usage: eye count <delta> [task]"
-        return 1
+    if [[ -z "$delta" || "$delta" == "--help" || "$delta" == "-h" ]]; then
+        msg_info "Usage: eye count <delta> [task_id|@group|--all]"
+        msg_data "Example: eye count -1 (Reduce remain count)"
+        return 0
     fi
     
     _apply_to_tasks "$target" _cb_count_shift "$delta"
@@ -222,6 +225,12 @@ _cmd_reset() {
     local do_time=false
     local do_count=false
     
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        msg_info "Usage: eye reset [target] --time --count"
+        msg_data "Example: eye reset @work --time"
+        return 0
+    fi
+
     # Parse args
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -234,9 +243,8 @@ _cmd_reset() {
     done
     
     if [[ "$do_time" == "false" && "$do_count" == "false" ]]; then
-        # If neither specified, maybe default to both? Or show help?
-        # Spec says: "reset directly -> help"
-        msg_error "Usage: eye reset <target> --time --count"
+        msg_error "Error: Please specify what to reset using --time or --count"
+        msg_info "Usage: eye reset [target] --time --count"
         return 1
     fi
     
@@ -248,8 +256,8 @@ _cmd_add() {
     local task_id="$1"
     shift
     
-    if [[ -z "$task_id" ]]; then
-        msg_error "$MSG_HELP_ADD_USAGE"
+    if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
+        msg_info "$MSG_HELP_ADD_USAGE"
         return 1
     fi
 
@@ -360,6 +368,12 @@ _cmd_add() {
 _cmd_edit() {
     local task_id="$1"
     shift
+
+    if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
+        msg_info "Usage: eye edit <task_id> [options]"
+        return 1
+    fi
+
     local task_file="$TASKS_DIR/$task_id"
     
     if [[ ! -f "$task_file" ]]; then
@@ -466,25 +480,70 @@ _cmd_list() {
 }
 
 _cmd_status() {
-    # Sort by group, name, creation time (we use mtime as creation/mod time proxy)
-    # This requires collecting data first.
+    local sort_key="group"
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --sort)
+                case "$2" in
+                    name|group|time) sort_key="$2"; shift 2 ;;
+                    *) msg_error "Invalid sort key: $2 (name|group|time)"; return 1 ;;
+                esac
+                ;;
+            *) shift ;;
+        esac
+    done
     
     if [ ! -t 1 ]; then
-        # Machine readable (simple)
         echo "daemon_running=$( [ -f "$PID_FILE" ] && echo true || echo false )"
         return
     fi
     
     # Daemon Status
-    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
-    then
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
         msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))"
     else
         msg_error "● Daemon: Inactive"
     fi
     
     echo ""
-    _cmd_list | sort -k2,2 -k1,1  # Simple sort by Group then ID
+    
+    # Header
+    msg_info "$MSG_TASK_LIST_HEADER"
+    printf "% -15s % -10s % -10s % -10s % -10s\n" "$MSG_TASK_ID" "$MSG_TASK_GROUP" "$MSG_TASK_INTERVAL" "$MSG_TASK_STATUS" "NEXT"
+    echo "---------------------------------------------------------------"
+
+    # Data Collection & Sort
+    shopt -s nullglob
+    local tasks=("$TASKS_DIR"/*)
+    if [ ${#tasks[@]} -eq 0 ]; then
+        msg_info " (No tasks found)"
+        return
+    fi
+
+    (
+        for task_file in "${tasks[@]}"; do
+            [ -e "$task_file" ] || continue
+            task_id=$(basename "$task_file")
+            if _load_task "$task_id"; then
+                local next_run="-"
+                if [[ "$STATUS" == "running" ]]; then
+                    local current_time=$(date +%s)
+                    local diff=$((INTERVAL - (current_time - LAST_RUN)))
+                    [[ $diff -lt 0 ]] && diff=0
+                    next_run=$(_format_duration $diff)
+                fi
+                
+                # Format: [SortValue] TaskLine
+                local mtime=$(date -r "$task_file" +%s)
+                case "$sort_key" in
+                    name)  printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$task_id" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run" ;;
+                    time)  printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$mtime" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run" ;;
+                    group) printf "%s | % -15s % -10s % -10s % -10s % -10s\n" "$GROUP" "$task_id" "$GROUP" "$(_format_duration $INTERVAL)" "$STATUS" "$next_run" ;;
+                esac
+            fi
+        done
+    ) | sort -V | cut -d'|' -f2-
 }
 
 _cmd_in() {
