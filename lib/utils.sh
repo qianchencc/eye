@@ -166,3 +166,45 @@ _prompt_confirm() {
     fi
     return 1
 }
+
+# --- Interactive Input Helpers ---
+
+_ask_val() {
+    local prompt="$1"
+    local default="$2"
+    local var_name="$3"
+    
+    if [ -n "$default" ]; then
+        printf "%s [%s]: " "$prompt" "$default"
+    else
+        printf "%s: " "$prompt"
+    fi
+    read -r input < /dev/tty
+    if [ -z "$input" ]; then
+        eval "$var_name=\"$default\""
+    else
+        eval "$var_name=\"$input\""
+    fi
+}
+
+_ask_bool() {
+    local prompt="$1"
+    local default="$2" # "y" or "n"
+    local var_name="$3"
+    
+    local yn="[y/n]"
+    [ "$default" == "y" ] && yn="[Y/n]"
+    [ "$default" == "n" ] && yn="[y/N]"
+    
+    printf "%s %s: " "$prompt" "$yn"
+    read -r input < /dev/tty
+    if [ -z "$input" ]; then
+        input="$default"
+    fi
+    
+    if [[ "$input" =~ ^[Yy] ]]; then
+        eval "$var_name=true"
+    else
+        eval "$var_name=false"
+    fi
+}
