@@ -282,10 +282,12 @@ _execute_add_single() {
         return
     fi
     
+    # Init EYE_T_ namespace
+    local now=$(date +%s)
     EYE_T_NAME="$task_id"; EYE_T_GROUP="default"; EYE_T_INTERVAL=1200; EYE_T_DURATION=20
     EYE_T_TARGET_COUNT=-1; EYE_T_REMAIN_COUNT=-1; EYE_T_IS_TEMP=false; EYE_T_SOUND_ENABLE=true
     EYE_T_SOUND_START="default"; EYE_T_SOUND_END="complete"; EYE_T_MSG_START=""; EYE_T_MSG_END=""
-    EYE_T_LAST_RUN=0; EYE_T_CREATED_AT=$(date +%s); EYE_T_LAST_TRIGGER_AT=0; EYE_T_STATUS="running"
+    EYE_T_LAST_RUN="$now"; EYE_T_CREATED_AT="$now"; EYE_T_LAST_TRIGGER_AT=0; EYE_T_STATUS="running"
 
     if [[ $# -eq 0 && -t 0 ]]; then
         local tmp_val
@@ -497,9 +499,10 @@ _cmd_in() {
     fi
     local interval=$(_parse_duration "$time_str") || return 1
     local task_id="temp_$(date +%s)_$RANDOM"
+    local now=$(date +%s)
     EYE_T_NAME="Reminder"; EYE_T_GROUP="temp"; EYE_T_INTERVAL="$interval"; EYE_T_DURATION=0
     EYE_T_TARGET_COUNT=1; EYE_T_REMAIN_COUNT=1; EYE_T_IS_TEMP=true; EYE_T_SOUND_ENABLE=true
-    EYE_T_SOUND_START="default"; EYE_T_MSG_START="${msg:-Reminder}"; EYE_T_LAST_RUN=0; EYE_T_CREATED_AT=$(date +%s); EYE_T_STATUS="running"
+    EYE_T_SOUND_START="default"; EYE_T_MSG_START="${msg:-Reminder}"; EYE_T_LAST_RUN="$now"; EYE_T_CREATED_AT="$now"; EYE_T_STATUS="running"
     _save_task "$task_id" && msg_success "Reminder set for $time_str: $EYE_T_MSG_START"
 }
 
