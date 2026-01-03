@@ -13,11 +13,11 @@ TASK="test_sound_$(date +%s)"
 $EYE add "$TASK" -i 10m
 $EYE sound off "$TASK"
 source "$HOME/.config/eye/tasks/$TASK"
-[ "$SOUND_ENABLE" == "false" ] || { echo "FAIL: task sound off"; exit 1; }
+[ "$EYE_T_SOUND_ENABLE" == "false" ] || { echo "FAIL: task sound off"; exit 1; }
 
 $EYE sound on "$TASK"
 source "$HOME/.config/eye/tasks/$TASK"
-[ "$SOUND_ENABLE" == "true" ] || { echo "FAIL: task sound on"; exit 1; }
+[ "$EYE_T_SOUND_ENABLE" == "true" ] || { echo "FAIL: task sound on"; exit 1; }
 echo "PASS: task sound toggle"
 
 # Custom sound

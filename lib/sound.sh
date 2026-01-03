@@ -197,7 +197,7 @@ _cmd_sound() {
             if [[ -n "$target" ]]; then
                 # Enable specific task sound
                 if _load_task "$target"; then
-                    SOUND_ENABLE="true"
+                    EYE_T_SOUND_ENABLE="true"
                     _save_task "$target"
                     msg_success "Sound enabled for $target"
                 fi
@@ -212,7 +212,7 @@ _cmd_sound() {
             if [[ -n "$target" ]]; then
                 # Disable specific task sound
                 if _load_task "$target"; then
-                    SOUND_ENABLE="false"
+                    EYE_T_SOUND_ENABLE="false"
                     _save_task "$target"
                     msg_success "Sound disabled for $target"
                 fi

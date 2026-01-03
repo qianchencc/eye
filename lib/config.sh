@@ -15,22 +15,22 @@ _ensure_default_task() {
     if ! ls "$TASKS_DIR"/* >/dev/null 2>&1; then
         local now=$(date +%s)
         cat > "$TASKS_DIR/eye_rest" <<EOF
-NAME="eye_rest"
-GROUP="default"
-INTERVAL=1200
-DURATION=20
-TARGET_COUNT=-1
-REMAIN_COUNT=-1
-IS_TEMP=false
-SOUND_ENABLE=true
-SOUND_START="default"
-SOUND_END="complete"
-MSG_START='Look away for {DURATION}!'
-MSG_END="Eyes rested. Keep going!"
-LAST_RUN=0
-CREATED_AT=$now
-LAST_TRIGGER_AT=0
-STATUS="running"
+EYE_T_NAME="eye_rest"
+EYE_T_GROUP="default"
+EYE_T_INTERVAL=1200
+EYE_T_DURATION=20
+EYE_T_TARGET_COUNT=-1
+EYE_T_REMAIN_COUNT=-1
+EYE_T_IS_TEMP=false
+EYE_T_SOUND_ENABLE=true
+EYE_T_SOUND_START="default"
+EYE_T_SOUND_END="complete"
+EYE_T_MSG_START='Look away for {DURATION}!'
+EYE_T_MSG_END="Eyes rested. Keep going!"
+EYE_T_LAST_RUN=0
+EYE_T_CREATED_AT=$now
+EYE_T_LAST_TRIGGER_AT=0
+EYE_T_STATUS="running"
 EOF
     fi
 }

@@ -39,7 +39,10 @@ assert_task_field() {
     
     if [ ! -f "$file" ]; then fail "Task $id not found"; fi
     
-    local val=$(grep "^$field=" "$file" | cut -d'=' -f2 | tr -d '"')
+    # Source in a subshell to avoid polluting test environment
+    local var_name="EYE_T_$field"
+    local val=$( (source "$file" && echo "${!var_name}") )
+    
     if [[ "$val" != "$expected" ]]; then
         fail "Task $id: $field expected '$expected', got '$val'"
     fi

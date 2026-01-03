@@ -25,47 +25,47 @@ _migrate_v1_to_v2() {
         source "$old_config"
         
         # 转换变量
-        NAME="eye_rest"
-        GROUP="default"
-        INTERVAL="${REST_GAP:-1200}"
-        DURATION="${LOOK_AWAY:-20}"
-        TARGET_COUNT=-1
-        REMAIN_COUNT=-1
-        IS_TEMP=false
+        EYE_T_NAME="eye_rest"
+        EYE_T_GROUP="default"
+        EYE_T_INTERVAL="${REST_GAP:-1200}"
+        EYE_T_DURATION="${LOOK_AWAY:-20}"
+        EYE_T_TARGET_COUNT=-1
+        EYE_T_REMAIN_COUNT=-1
+        EYE_T_IS_TEMP=false
         
         # 音效开关处理
-        SOUND_ENABLE="true"
+        EYE_T_SOUND_ENABLE="true"
         if [[ "$SOUND_SWITCH" == "off" ]]; then
-            SOUND_ENABLE="false"
+            EYE_T_SOUND_ENABLE="false"
         fi
         
-        SOUND_START="${SOUND_START:-default}"
-        SOUND_END="${SOUND_END:-complete}"
+        EYE_T_SOUND_START="${SOUND_START:-default}"
+        EYE_T_SOUND_END="${SOUND_END:-complete}"
         
         local now=$(date +%s)
-        LAST_RUN=0
-        CREATED_AT=$now
-        LAST_TRIGGER_AT=0
-        STATUS="running"
+        EYE_T_LAST_RUN=0
+        EYE_T_CREATED_AT=$now
+        EYE_T_LAST_TRIGGER_AT=0
+        EYE_T_STATUS="running"
         
         # 写入新任务文件
         cat > "$new_task_file" <<EOF
-NAME="$NAME"
-GROUP="$GROUP"
-INTERVAL="$INTERVAL"
-DURATION="$DURATION"
-TARGET_COUNT="$TARGET_COUNT"
-REMAIN_COUNT="$REMAIN_COUNT"
-IS_TEMP="$IS_TEMP"
-SOUND_ENABLE="$SOUND_ENABLE"
-SOUND_START="$SOUND_START"
-SOUND_END="$SOUND_END"
-MSG_START='Look away for {DURATION}!'
-MSG_END="Eyes rested. Keep going!"
-LAST_RUN="$LAST_RUN"
-CREATED_AT="$CREATED_AT"
-LAST_TRIGGER_AT="$LAST_TRIGGER_AT"
-STATUS="$STATUS"
+EYE_T_NAME="$EYE_T_NAME"
+EYE_T_GROUP="$EYE_T_GROUP"
+EYE_T_INTERVAL="$EYE_T_INTERVAL"
+EYE_T_DURATION="$EYE_T_DURATION"
+EYE_T_TARGET_COUNT="$EYE_T_TARGET_COUNT"
+EYE_T_REMAIN_COUNT="$EYE_T_REMAIN_COUNT"
+EYE_T_IS_TEMP="$EYE_T_IS_TEMP"
+EYE_T_SOUND_ENABLE="$EYE_T_SOUND_ENABLE"
+EYE_T_SOUND_START="$EYE_T_SOUND_START"
+EYE_T_SOUND_END="$EYE_T_SOUND_END"
+EYE_T_MSG_START='Look away for {DURATION}!'
+EYE_T_MSG_END="Eyes rested. Keep going!"
+EYE_T_LAST_RUN="$EYE_T_LAST_RUN"
+EYE_T_CREATED_AT="$EYE_T_CREATED_AT"
+EYE_T_LAST_TRIGGER_AT="$EYE_T_LAST_TRIGGER_AT"
+EYE_T_STATUS="$EYE_T_STATUS"
 EOF
     )
 

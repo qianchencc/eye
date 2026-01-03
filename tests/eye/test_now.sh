@@ -28,8 +28,8 @@ fi
 LOG_CONTENT=$(cat "$MOCK_LOG")
 echo "Debug: Mock Log Content: $LOG_CONTENT"
 
-# NAME should be TASK
-# DURATION should be 2s
+# EYE_T_NAME should be TASK
+# EYE_T_DURATION should be 2s
 # Alias [duration] should be 2s
 if echo "$LOG_CONTENT" | grep -q "Name:$TASK" && \
    echo "$LOG_CONTENT" | grep -q "Dur:" && \
