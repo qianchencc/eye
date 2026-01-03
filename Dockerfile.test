@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     make \
     sound-theme-freedesktop \
     bash-completion \
+    bsdmainutils \
+    bsdextrautils \
     git \
     bash \
     curl \

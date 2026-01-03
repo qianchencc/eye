@@ -54,6 +54,11 @@ _execute_task() {
         return
     fi
 
+    # 逻辑调整：先扣减计数，使通知中的 {REMAIN_COUNT} 准确
+    if [[ "$TARGET_COUNT" -gt 0 ]]; then
+        REMAIN_COUNT=$((REMAIN_COUNT - 1))
+    fi
+
     # 变量准备
     local start_msg=$(_format_msg "${MSG_START:-$MSG_NOTIFY_BODY_START}")
     local end_msg=$(_format_msg "${MSG_END:-$MSG_NOTIFY_BODY_END}")
@@ -67,9 +72,6 @@ _execute_task() {
         
         # 更新状态
         LAST_RUN=$(date +%s)
-        if [[ "$TARGET_COUNT" -gt 0 ]]; then
-            REMAIN_COUNT=$((REMAIN_COUNT - 1))
-        fi
         _save_task "$task_id"
         _log_history "$task_id" "TRIGGERED"
     else
@@ -92,14 +94,11 @@ _execute_task() {
             
             # 更新状态
             LAST_RUN=$(date +%s)
-            if [[ "$TARGET_COUNT" -gt 0 ]]; then
-                REMAIN_COUNT=$((REMAIN_COUNT - 1))
-            fi
             _save_task "$task_id"
             _log_history "$task_id" "COMPLETED"
         else
-            # 抢锁失败：若是同组任务则跳过，等待下一轮
-            # 这里可以扩展排队逻辑
+            # 抢锁失败：还原计数以便下次尝试
+            [[ "$TARGET_COUNT" -gt 0 ]] && REMAIN_COUNT=$((REMAIN_COUNT + 1))
             return
         fi
     fi
@@ -129,6 +128,24 @@ _daemon_loop() {
     echo $BASHPID > "$PID_FILE"
     
     msg_info "Daemon started. PID: $BASHPID"
+
+    # 初始化逻辑：对齐所有任务的计时器，防止由于长期停机导致的“通知风暴”
+    local now=$(date +%s)
+    for task_file in "$TASKS_DIR"/*; do
+        [ -e "$task_file" ] || continue
+        task_id=$(basename "$task_file")
+        if _load_task "$task_id" && [[ "$STATUS" == "running" ]]; then
+            if [ "$LAST_RUN" -eq 0 ]; then
+                # 从未运行过的任务，从现在开始计时
+                LAST_RUN=$now
+                _save_task "$task_id"
+            elif [ $((now - LAST_RUN)) -ge "$INTERVAL" ]; then
+                # 已过期的任务，对齐到上一个理论触发点 (now - elapsed % interval)
+                LAST_RUN=$(( now - ((now - LAST_RUN) % INTERVAL) ))
+                _save_task "$task_id"
+            fi
+        fi
+    done
 
     while true; do
         # 动态重载配置 (语言、静默模式等)

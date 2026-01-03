@@ -383,83 +383,95 @@ _cmd_status() {
         esac
     done
     local daemon_active=false
-    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then daemon_active=true; fi
+    local ref_time=$(date +%s)
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        daemon_active=true
+    else
+        # Use fixed reference when daemon is off so NEXT doesn't "flow"
+        ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+    fi
+
     if [ ! -t 1 ]; then echo "daemon_running=$daemon_active"; return; fi
     
     [ "$daemon_active" = true ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
     echo ""
     
-    # Box drawing characters
-    local TL="┌" TR="┐" BL="└" BR="┘" H="─" V="│" T="┬" B="┴" M="┼" L="├" R="┤"
-    
-    # Column widths: ID(20), Group(10), Interval(10), Count(10), Status(10), NEXT(10)
-    # Note: total width = 20+10+10+10+10+10 + 7 separators = 77
-    local sep_line=$(printf "%s%77s%s" "$L" "" "$R" | tr ' ' "$H")
-    # Custom separators for the middle line
-    local mid_sep="├──────────────────────┼────────────┼────────────┼────────────┼────────────┼────────────┤"
-    local top_line="┌──────────────────────┬────────────┬────────────┬────────────┬────────────┬────────────┐"
-    local bot_line="└──────────────────────┴────────────┴────────────┴────────────┴────────────┴────────────┘"
-
-    msg_info "$top_line"
-    printf "${_C_BOLD}${V} % -20s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V}${_C_RESET}\n" "$MSG_TASK_ID" "$MSG_TASK_GROUP" "$MSG_TASK_INTERVAL" "$MSG_TASK_COUNT" "$MSG_TASK_STATUS" "NEXT"
-    msg_info "$mid_sep"
+    # Header with Duration column. Trailing separator removed to avoid extra column.
+    local header="$MSG_TASK_ID|$MSG_TASK_GROUP|$MSG_TASK_INTERVAL|$MSG_TASK_DURATION|$MSG_TASK_COUNT|$MSG_TASK_STATUS|NEXT"
+    local rows=()
 
     shopt -s nullglob
     local tasks=("$TASKS_DIR"/*)
     if [[ ${#tasks[@]} -eq 0 ]]; then
-        printf "${V} %-75s ${V}\n" " (No tasks found)"
-        msg_info "$bot_line"
+        echo " (No tasks found)"
         return
     fi
 
-    (
-        for task_file in "${tasks[@]}"; do
-            [ -e "$task_file" ] || continue
-            task_id=$(basename "$task_file")
-            if _load_task "$task_id"; then
-                local next_run="-" sort_val="" current_time=$(date +%s) diff_sec=999999999
-                
-                # Format Status (No Emojis)
-                local status_fmt="${STATUS^}" # Capitalize first letter
+    for task_file in "${tasks[@]}"; do
+        [ -e "$task_file" ] || continue
+        task_id=$(basename "$task_file")
+        if _load_task "$task_id"; then
+            local next_run="-" sort_val="" diff_sec=999999999
+            local status_fmt="${STATUS^}"
 
-                if [[ "$STATUS" == "running" ]] && [ "$daemon_active" = true ]; then
-                    diff_sec=$((INTERVAL - (current_time - LAST_RUN)))
-                    [[ $diff_sec -lt 0 ]] && diff_sec=0
-                    next_run=$(_format_duration $diff_sec)
-                elif [[ "$STATUS" == "running" ]]; then
-                    next_run="(off)"
-                fi
-                
-                # Format Name
-                local name_display="$task_id"
-                [[ "$IS_TEMP" == "true" ]] && name_display="[T] $name_display"
-                if [ ${#name_display} -gt 20 ]; then
-                    name_display="${name_display:0:17}..."
-                fi
-
-                # Format Count
-                local count_fmt=""
-                if [ "$TARGET_COUNT" -eq -1 ]; then
-                    count_fmt="∞"
-                else
-                    count_fmt="$REMAIN_COUNT/$TARGET_COUNT"
-                fi
-
-                local mtime=$(date -r "$task_file" +%s)
-                case "$sort_key" in
-                    name)    sort_val="$task_id" ;;
-                    group)   sort_val="$GROUP" ;;
-                    next)    sort_val="$(printf "%012d" $diff_sec)" ;;
-                    created) sort_val="$mtime" ;;
-                esac
-                printf "%s |${V} % -20s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V} % -10s ${V}\n" "$sort_val" "$name_display" "$GROUP" "$(_format_duration $INTERVAL)" "$count_fmt" "$status_fmt" "$next_run"
+            if [[ "$STATUS" == "running" ]]; then
+                diff_sec=$((INTERVAL - (ref_time - LAST_RUN)))
+                [[ $diff_sec -lt 0 ]] && diff_sec=0
+                next_run=$(_format_duration $diff_sec)
             fi
-        done
-    ) | { 
-        if [ "$reverse" = true ]; then sort -rV; else sort -V; fi; 
-    } | cut -d'|' -f2-
+            
+            local name_display="$task_id"
+            [[ "$IS_TEMP" == "true" ]] && name_display="[T] $name_display"
+
+            local count_fmt=""
+            [ "$TARGET_COUNT" -eq -1 ] && count_fmt="∞" || count_fmt="$REMAIN_COUNT/$TARGET_COUNT"
+
+            case "$sort_key" in
+                name)    sort_val="$task_id" ;;
+                group)   sort_val="$GROUP" ;;
+                next)    sort_val="$(printf "%012d" $diff_sec)" ;;
+                created) sort_val=$(date -r "$task_file" +%s) ;;
+            esac
+            
+            local dur_fmt=$(_format_duration "$DURATION")
+            [[ "$DURATION" -eq 0 ]] && dur_fmt="0s"
+
+            rows+=("$sort_val|$name_display|$GROUP|$(_format_duration $INTERVAL)|$dur_fmt|$count_fmt|$status_fmt|$next_run")
+        fi
+    done
+
+    # Sort rows
+    local sorted_data
+    if [ "$reverse" = true ]; then
+        sorted_data=$(printf "%s\n" "${rows[@]}" | sort -rV | cut -d'|' -f2-)
+    else
+        sorted_data=$(printf "%s\n" "${rows[@]}" | sort -V | cut -d'|' -f2-)
+    fi
+
+    # Create table using column
+    local tmp_f=$(mktemp)
+    { echo "$header"; echo "$sorted_data"; } > "$tmp_f"
+    # To prevent 'column' from omitting padding on the last column, 
+    # we pipe it through a small sed to add a trailing visible mark, 
+    # then remove it after column has done its alignment.
+    local table_content=$(sed 's/$/|./' "$tmp_f" | column -t -s '|' -o ' | ' | sed 's/ | .$//')
+    rm -f "$tmp_f"
+
+    # Precise visual width check
+    local visual_width=$(echo "$table_content" | head -n1 | wc -L)
     
-    msg_info "$bot_line"
+    # ASCII Border Helpers
+    local h_line=$(printf "%${visual_width}s" "" | tr ' ' '-')
+    local border="+--${h_line}--+"
+
+    echo "$border"
+    local i=0
+    while IFS= read -r line; do
+        printf "|  %-${visual_width}s  |\n" "$line"
+        [[ $i -eq 0 ]] && echo "$border"
+        ((i++))
+    done <<< "$table_content"
+    echo "$border"
 }
 
 _cmd_version() {

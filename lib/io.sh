@@ -56,7 +56,7 @@ _load_task() {
     SOUND_END="$DEFAULT_SOUND_END"
     MSG_START=""
     MSG_END=""
-    LAST_RUN=$(date +%s)
+    LAST_RUN=0
     STATUS="running"
     
     # Source 任务文件 (Key=Value 结构)

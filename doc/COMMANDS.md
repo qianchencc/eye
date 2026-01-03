@@ -37,15 +37,17 @@
 **改进**: 增加了强大的排序和过滤参数，优化了长名称显示。
 
 * **`status [target] [options]`**
-* **Usage**: `eye status`, `eye list`, `eye status @work --sort name -r`
+* **Usage**: `eye status`, `eye list`
 * **描述**: 显示守护进程状态及任务列表。
 * **输出列**:
-    * `ID`: 任务标识。若为临时任务，名称前会显示 `[T]`。
+    * `ID`: 任务标识 (临时任务带 `[T]` 前缀)。
     * `Group`: 组名。
     * `Interval`: 触发间隔。
-    * `Count`: 运行计数。显示为 `当前/目标`，无限循环任务显示 `∞`。
-    * `Status`: 运行状态 (🟢 Running, 🔴 Stopped, ⏸️  Paused)。
-    * `NEXT`: 下次触发倒计时。守护进程未启动时显示 `(off)`。
+    * `Duration`: 持续时间 (脉冲任务显示 `0s`)。
+    * `Count`: 运行计数 (`当前/目标` 或 `∞`)。
+    * `Status`: 运行状态 (Running, Stopped, Paused)。
+    * `NEXT`: 下次触发倒计时 (守护进程关闭时时间静止)。
+* **改进**: 采用 ASCII 强健对齐表格，支持中英文字符对齐。
 * **参数**:
     * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
     * `--reverse, -r`: 倒序排列。
@@ -67,7 +69,8 @@
 * **内容参数 (新增)**:
     * `--sound-start <tag/path>`: 设置开始音效.
     * `--sound-end <tag/path>`: 设置结束音效 (仅当 `duration>0` 时有效)。
-    * `--msg-start "text"`: 设置开始通知文案。支持变量：`${VAR}` 或 `{VAR}` 风格（如 `${DURATION}` 或 `{DURATION}`）。
+    * `--msg-start "text"`: 设置开始通知文案。支持变量：`${VAR}` 或 `{VAR}` 风格。
+    * 变量说明：`{REMAIN_COUNT}` 显示包含当前触发在内的剩余次数（更加准确）。
     * 支持变量：`DURATION`, `INTERVAL`, `NAME`, `REMAIN_COUNT`。
     * `--msg-end "text"`: 设置结束通知文案。
 * **特殊行为**:
