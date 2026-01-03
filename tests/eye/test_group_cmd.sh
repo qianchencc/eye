@@ -32,7 +32,14 @@ $EYE group test_task
 source "$TASKS_DIR/test_task"
 [ "$EYE_T_GROUP" == "default" ] || { echo "FAIL: Omitting group argument"; exit 1; }
 
-# 5. Test help output
+# 5. Test Dynamic Lifecycle (Auto-destruction)
+$EYE add lifecycle_task -g temp_group -i 1h
+$EYE status | grep -q "temp_group" || { echo "FAIL: Group auto-creation"; exit 1; }
+$EYE group lifecycle_task none
+$EYE status | grep -q "temp_group" && { echo "FAIL: Group auto-destruction"; exit 1; }
+echo "PASS: dynamic lifecycle"
+
+# 6. Test help output
 $EYE group help 2>&1 | grep -qE "Usage:|用法:" || { echo "FAIL: Group help output"; exit 1; }
 
 # 6. Test missing task_id

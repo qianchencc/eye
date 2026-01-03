@@ -293,15 +293,21 @@ _cmd_group() {
         return 1
     fi
 
-    # Normalize group name
-    if [[ -z "$new_group" || "$new_group" == "none" || "$new_group" == "default" ]]; then
+    # Normalize: empty or 'none' means move to 'default' (removing special group attribute)
+    if [[ -z "$new_group" || "$new_group" == "none" ]]; then
         new_group="default"
     fi
 
     _load_task "$task_id"
+    local old_group="$EYE_T_GROUP"
     EYE_T_GROUP="$new_group"
     _save_task "$task_id"
-    msg_success "Task '$task_id' moved to group '$new_group'."
+    
+    if [[ "$new_group" == "default" ]]; then
+        msg_success "Task '$task_id' moved to default group (unassigned)."
+    else
+        msg_success "Task '$task_id' moved from '$old_group' to '$new_group'."
+    fi
 }
 
 _cmd_status() {
