@@ -374,11 +374,12 @@ _cb_remove() {
 }
 
 _cmd_status() {
-    local sort_key="next" reverse=false
+    local sort_key="next" reverse=false long_format=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --sort|-s) sort_key="$2"; shift 2 ;;
             --reverse|-r) reverse=true; shift ;;
+            --long|-l) long_format=true; shift ;;
             *) shift ;;
         esac
     done
@@ -387,8 +388,12 @@ _cmd_status() {
     if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
         daemon_active=true
     else
-        # Use fixed reference when daemon is off so NEXT doesn't "flow"
-        ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+        # Use recorded stop time if available, otherwise directory mtime
+        if [ -f "$STOP_FILE" ]; then
+            ref_time=$(cat "$STOP_FILE")
+        else
+            ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+        fi
     fi
 
     if [ ! -t 1 ]; then echo "daemon_running=$daemon_active"; return; fi
@@ -396,8 +401,6 @@ _cmd_status() {
     [ "$daemon_active" = true ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
     echo ""
     
-    # Header with Duration column. Trailing separator removed to avoid extra column.
-    local header="$MSG_TASK_ID|$MSG_TASK_GROUP|$MSG_TASK_INTERVAL|$MSG_TASK_DURATION|$MSG_TASK_COUNT|$MSG_TASK_STATUS|NEXT"
     local rows=()
 
     shopt -s nullglob
@@ -421,10 +424,18 @@ _cmd_status() {
             fi
             
             local name_display="$task_id"
-            [[ "$IS_TEMP" == "true" ]] && name_display="[T] $name_display"
+            [[ "$IS_TEMP" == "true" ]] && name_display="[T]$task_id"
 
             local count_fmt=""
-            [ "$TARGET_COUNT" -eq -1 ] && count_fmt="∞" || count_fmt="$REMAIN_COUNT/$TARGET_COUNT"
+            if [ "$TARGET_COUNT" -eq -1 ]; then
+                count_fmt="(∞)"
+            else
+                count_fmt="($REMAIN_COUNT/$TARGET_COUNT)"
+            fi
+
+            local dur_fmt=$(_format_duration "$DURATION")
+            [[ "$DURATION" -eq 0 ]] && dur_fmt="0s"
+            local time_comb="$(_format_duration $INTERVAL)/$dur_fmt"
 
             case "$sort_key" in
                 name)    sort_val="$task_id" ;;
@@ -433,14 +444,16 @@ _cmd_status() {
                 created) sort_val=$(date -r "$task_file" +%s) ;;
             esac
             
-            local dur_fmt=$(_format_duration "$DURATION")
-            [[ "$DURATION" -eq 0 ]] && dur_fmt="0s"
-
-            rows+=("$sort_val|$name_display|$GROUP|$(_format_duration $INTERVAL)|$dur_fmt|$count_fmt|$status_fmt|$next_run")
+            if [ "$long_format" = true ]; then
+                # Boxed format data: ID|Group|Interval|Dur|Count|Status|Next
+                rows+=("$sort_val|$name_display|$GROUP|$(_format_duration $INTERVAL)|$dur_fmt|$count_fmt|$status_fmt|$next_run|")
+            else
+                # Compact format data: Status|ID|Timing|Count|Next|Group
+                rows+=("$sort_val|$status_fmt|$name_display|$time_comb|$count_fmt|$next_run|$GROUP")
+            fi
         fi
     done
 
-    # Sort rows
     local sorted_data
     if [ "$reverse" = true ]; then
         sorted_data=$(printf "%s\n" "${rows[@]}" | sort -rV | cut -d'|' -f2-)
@@ -448,30 +461,27 @@ _cmd_status() {
         sorted_data=$(printf "%s\n" "${rows[@]}" | sort -V | cut -d'|' -f2-)
     fi
 
-    # Create table using column
-    local tmp_f=$(mktemp)
-    { echo "$header"; echo "$sorted_data"; } > "$tmp_f"
-    # To prevent 'column' from omitting padding on the last column, 
-    # we pipe it through a small sed to add a trailing visible mark, 
-    # then remove it after column has done its alignment.
-    local table_content=$(sed 's/$/|./' "$tmp_f" | column -t -s '|' -o ' | ' | sed 's/ | .$//')
-    rm -f "$tmp_f"
-
-    # Precise visual width check
-    local visual_width=$(echo "$table_content" | head -n1 | wc -L)
-    
-    # ASCII Border Helpers
-    local h_line=$(printf "%${visual_width}s" "" | tr ' ' '-')
-    local border="+--${h_line}--+"
-
-    echo "$border"
-    local i=0
-    while IFS= read -r line; do
-        printf "|  %-${visual_width}s  |\n" "$line"
-        [[ $i -eq 0 ]] && echo "$border"
-        ((i++))
-    done <<< "$table_content"
-    echo "$border"
+    if [ "$long_format" = true ]; then
+        local long_header="$MSG_TASK_ID|$MSG_TASK_GROUP|$MSG_TASK_INTERVAL|$MSG_TASK_DURATION|$MSG_TASK_COUNT|$MSG_TASK_STATUS|NEXT|"
+        local tmp_f=$(mktemp)
+        { echo "$long_header"; echo "$sorted_data"; } > "$tmp_f"
+        local table_content=$(sed 's/$/|./' "$tmp_f" | column -t -s '|' -o ' | ' | sed 's/ | .$//')
+        rm -f "$tmp_f"
+        local visual_width=$(echo "$table_content" | head -n1 | wc -L)
+        local h_line=$(printf "%${visual_width}s" "" | tr ' ' '-')
+        local border="+--${h_line}--+"
+        echo "$border"
+        local i=0
+        while IFS= read -r line; do
+            printf "|  %-${visual_width}s  |\n" "$line"
+            [[ $i -eq 0 ]] && echo "$border"
+            ((i++))
+        done <<< "$table_content"
+        echo "$border"
+    else
+        # Default compact stream
+        printf "%s\n" "$sorted_data" | column -t
+    fi
 }
 
 _cmd_version() {
@@ -498,29 +508,30 @@ _cmd_daemon() {
     _load_global_config
     case "$cmd" in
         up)
-            if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
-            then
+            if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
                 msg_warn "Daemon already running."
             else
+                rm -f "$STOP_FILE"
                 _daemon_loop > /dev/null 2>&1 &
                 disown
                 msg_success "Daemon started."
             fi
-            ;; 
+            ;;
         down)
             if [ -f "$PID_FILE" ]; then
+                date +%s > "$STOP_FILE"
                 kill $(cat "$PID_FILE") 2>/dev/null
                 rm "$PID_FILE"
                 msg_success "Daemon stopped."
             else
                 msg_info "Daemon not running."
             fi
-            ;; 
+            ;;
         default)
             local task="$1"
             if [[ -z "$task" ]]; then echo "Current default task: ${DEFAULT_TASK:-default}"
             else DEFAULT_TASK="$task"; _save_global_config; msg_success "Default task set to: $task"; fi
-            ;; 
+            ;;
         enable)
             mkdir -p "$SYSTEMD_DIR"
             local bin_path=$(readlink -f "$0")
@@ -540,15 +551,14 @@ EOF
             systemctl --user daemon-reload
             systemctl --user enable eye.service
             msg_success "Autostart enabled (Systemd)."
-            ;; 
-        disable) systemctl --user disable eye.service; rm -f "$SERVICE_FILE"; systemctl --user daemon-reload; msg_success "Autostart disabled." ;; 
-        quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;; 
-        root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;; 
-        language) LANGUAGE="$1"; _save_global_config; msg_success "Language set to: $LANGUAGE" ;; 
-        help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;; 
+            ;;
+        disable) systemctl --user disable eye.service; rm -f "$SERVICE_FILE"; systemctl --user daemon-reload; msg_success "Autostart disabled." ;;
+        quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;;
+        root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;;
+        language) LANGUAGE="$1"; _save_global_config; msg_success "Language set to: $LANGUAGE" ;;
+        help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;;
     esac
 }
-
 _cmd_usage() {
     echo "$MSG_USAGE_HEADER"
     echo ""

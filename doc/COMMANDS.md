@@ -37,17 +37,19 @@
 **改进**: 增加了强大的排序和过滤参数，优化了长名称显示。
 
 * **`status [target] [options]`**
-* **Usage**: `eye status`, `eye list`
+* **Usage**: `eye status`, `eye list`, `eye status -l`
 * **描述**: 显示守护进程状态及任务列表。
-* **输出列**:
-    * `ID`: 任务标识 (临时任务带 `[T]` 前缀)。
-    * `Group`: 组名。
-    * `Interval`: 触发间隔。
-    * `Duration`: 持续时间 (脉冲任务显示 `0s`)。
-    * `Count`: 运行计数 (`当前/目标` 或 `∞`)。
-    * `Status`: 运行状态 (Running, Stopped, Paused)。
-    * `NEXT`: 下次触发倒计时 (守护进程关闭时时间静止)。
-* **改进**: 采用 ASCII 强健对齐表格，支持中英文字符对齐。
+* **参数**:
+    * `--long, -l`: 显示详细的 ASCII 边框表格看板。
+    * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
+    * `--reverse, -r`: 倒序排列。
+* **默认显示 (compact)**:
+    * `Status`: Running, Stopped, Paused.
+    * `ID`: 任务 ID (临时任务带 `[T]` 前缀).
+    * `Timing`: `间隔/持续时间`.
+    * `Count`: `(当前/目标)` 或 `(∞)`.
+    * `NEXT`: 下次触发倒计时 (守护进程关闭时保持静止)。
+    * `Group`: 任务所属组名。
 * **参数**:
     * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
     * `--reverse, -r`: 倒序排列。

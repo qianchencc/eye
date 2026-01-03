@@ -126,6 +126,7 @@ _log_history() {
 # 守护进程主循环
 _daemon_loop() {
     echo $BASHPID > "$PID_FILE"
+    rm -f "$STOP_FILE"
     
     msg_info "Daemon started. PID: $BASHPID"
 
