@@ -43,7 +43,7 @@ _migrate_v1_to_v2() {
         EYE_T_SOUND_END="${SOUND_END:-complete}"
         
         local now=$(date +%s)
-        EYE_T_LAST_RUN=0
+        EYE_T_LAST_RUN=$now
         EYE_T_CREATED_AT=$now
         EYE_T_LAST_TRIGGER_AT=0
         EYE_T_STATUS="running"

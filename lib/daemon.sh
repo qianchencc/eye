@@ -21,15 +21,26 @@ _format_msg() {
     local dur_fmt=$(_format_duration "$EYE_T_DURATION")
     local int_fmt=$(_format_duration "$EYE_T_INTERVAL")
     
-    local keys=("DURATION" "INTERVAL" "NAME" "REMAIN_COUNT")
-    local vals=("$dur_fmt" "$int_fmt" "$EYE_T_NAME" "$EYE_T_REMAIN_COUNT")
+    # We support multiple styles: ${VAR}, {VAR}, [VAR], and lowercase versions
+    local keys=("DURATION" "INTERVAL" "NAME" "REMAIN_COUNT" "REMAIN")
+    local vals=("$dur_fmt" "$int_fmt" "$EYE_T_NAME" "$EYE_T_REMAIN_COUNT" "$EYE_T_REMAIN_COUNT")
     
     for i in "${!keys[@]}"; do
         local k="${keys[$i]}"
         local v="${vals[$i]}"
+        
+        # Use a temporary variable to avoid issues with special characters in 'v'
+        # Escape backslashes and ampersands for safe use in sed or substitution if needed,
+        # but bash // substitution is generally safe for the 'v' part.
+        
+        # Case insensitive and multiple bracket styles
         msg="${msg//\$\{$k\}/$v}"
         msg="${msg//\{$k\}/$v}"
+        msg="${msg//\[$k\]/$v}"
+        
+        # Lowercase support
         local kl="${k,,}"
+        msg="${msg//\$\{$kl\}/$v}"
         msg="${msg//\{$kl\}/$v}"
         msg="${msg//\[$kl\]/$v}"
     done
@@ -40,7 +51,13 @@ _execute_task() {
     local task_id="$1"
     _load_task "$task_id"
     
+    # 状态与计数器熔断保护：防止竞态导致重复执行或计数归负
     if [[ "$EYE_T_STATUS" != "running" ]]; then return; fi
+    if [[ "$EYE_T_TARGET_COUNT" -gt 0 && "$EYE_T_REMAIN_COUNT" -le 0 ]]; then
+        EYE_T_STATUS="stopped"
+        _save_task "$task_id"
+        return
+    fi
 
     if [[ "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
         EYE_T_REMAIN_COUNT=$((EYE_T_REMAIN_COUNT - 1))
@@ -153,7 +170,16 @@ _daemon_loop() {
 
                 # 检查执行
                 if [[ "$EYE_T_STATUS" == "running" ]]; then
-                    if [ $((now - EYE_T_LAST_RUN)) -ge "$EYE_T_INTERVAL" ]; then
+                    current_time=$(date +%s)
+                    # 终极对齐保护：如果 LAST_RUN 为 0，说明是异常状态，立即对齐到当前时间以启动计时
+                    if [[ "${EYE_T_LAST_RUN:-0}" -eq 0 ]]; then
+                        EYE_T_LAST_RUN=$current_time
+                        _save_task "$task_id"
+                        continue
+                    fi
+
+                    if [ $((current_time - EYE_T_LAST_RUN)) -ge "$EYE_T_INTERVAL" ]; then
+                        # 触发执行
                         _execute_task "$task_id" &
                     fi
                 fi

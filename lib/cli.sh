@@ -70,7 +70,11 @@ _apply_to_tasks() {
 _cb_cli_start() {
     local id="$1"
     _core_task_start "$id"
-    msg_info "Task $id -> running"
+    # When explicitly 'starting' a task, restore count if it was finished
+    if [[ "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
+        EYE_T_REMAIN_COUNT="$EYE_T_TARGET_COUNT"
+    fi
+    msg_info "Task $id -> running (Metrics reset)"
 }
 
 _cb_cli_stop() {
@@ -132,7 +136,6 @@ _cmd_start() {
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
     
     _apply_to_tasks "$target" _cb_cli_start
-    _apply_to_tasks "$target" _cb_cli_reset "true" "false"
 }
 
 _cmd_stop() {
@@ -297,9 +300,13 @@ _execute_add_single() {
         EYE_T_DURATION=$(_parse_duration "$tmp_val") || return 1
         _ask_bool "$MSG_WIZARD_SOUND_ENABLE" "y" EYE_T_SOUND_ENABLE
         if [[ "$EYE_T_SOUND_ENABLE" == "true" ]]; then
+            msg_help "\nAvailable sounds:"
+            _cmd_sound list
             _ask_val "$(printf "$MSG_WIZARD_SOUND_START" "default")" "default" EYE_T_SOUND_START
             [[ "$EYE_T_DURATION" -gt 0 ]] && _ask_val "$(printf "$MSG_WIZARD_SOUND_END" "complete")" "complete" EYE_T_SOUND_END
         fi
+        
+        msg_help "\nHint: Use {NAME}, {INTERVAL}, {DURATION}, {REMAIN_COUNT} as variables."
         _ask_val "$MSG_WIZARD_MSG_START" "Start message" EYE_T_MSG_START
         [[ "$EYE_T_DURATION" -gt 0 ]] && _ask_val "$MSG_WIZARD_MSG_END" "End message" EYE_T_MSG_END
         _ask_val "Group" "default" EYE_T_GROUP
@@ -331,6 +338,7 @@ _cmd_edit() {
     local task_id="$1"; shift
     [[ -z "$task_id" || "$task_id" == "help" || "$task_id" == "-h" ]] && { msg_help "$MSG_HELP_EDIT_USAGE"; return; }
     [[ ! -f "$TASKS_DIR/$task_id" ]] && { msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"; return 1; }
+    
     _load_task "$task_id"
     if [[ $# -gt 0 ]]; then
         while [[ $# -gt 0 ]]; do
@@ -352,20 +360,45 @@ _cmd_edit() {
         done
         _save_task "$task_id" && msg_success "Task updated."
     else
-        local tmp_val
-        _ask_val "$MSG_WIZARD_INTERVAL" "$(_format_duration "$EYE_T_INTERVAL")" tmp_val
-        EYE_T_INTERVAL=$(_parse_duration "$tmp_val")
-        _ask_val "$MSG_WIZARD_DURATION" "$(_format_duration "$EYE_T_DURATION")" tmp_val
-        EYE_T_DURATION=$(_parse_duration "$tmp_val")
-        _ask_val "Group" "$EYE_T_GROUP" EYE_T_GROUP
-        _ask_val "$MSG_WIZARD_COUNT" "$EYE_T_TARGET_COUNT" EYE_T_TARGET_COUNT
-        [[ "$EYE_T_TARGET_COUNT" -gt 0 ]] && EYE_T_REMAIN_COUNT="$EYE_T_TARGET_COUNT" || EYE_T_REMAIN_COUNT="-1"
-        _ask_bool "Enable Sound" "$( [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && echo "y" || echo "n" )" EYE_T_SOUND_ENABLE
-        _ask_val "Sound Start" "$EYE_T_SOUND_START" EYE_T_SOUND_START
-        _ask_val "Sound End" "$EYE_T_SOUND_END" EYE_T_SOUND_END
-        _ask_val "Message Start" "$EYE_T_MSG_START" EYE_T_MSG_START
-        _ask_val "Message End" "$EYE_T_MSG_END" EYE_T_MSG_END
-        _save_task "$task_id" && msg_success "Task updated."
+        # Selective interactive mode
+        while true; do
+            msg_help "\n--- Editing Task: $task_id ---"
+            echo "1) Interval:    $(_format_duration "$EYE_T_INTERVAL")"
+            echo "2) Duration:    $(_format_duration "$EYE_T_DURATION")"
+            echo "3) Group:       $EYE_T_GROUP"
+            echo "4) Loop Count:  $EYE_T_TARGET_COUNT (Remaining: $EYE_T_REMAIN_COUNT)"
+            echo "5) Sound:       $EYE_T_SOUND_ENABLE (Start: $EYE_T_SOUND_START, End: $EYE_T_SOUND_END)"
+            echo "6) Messages:    Start: \"$EYE_T_MSG_START\", End: \"$EYE_T_MSG_END\""
+            echo "7) Is Temp:     $EYE_T_IS_TEMP"
+            echo "s) Save and Exit"
+            echo "q) Cancel and Exit"
+            
+            local choice tmp_val
+            read -p "Select option to edit: " choice
+            case "$choice" in
+                1) _ask_val "$MSG_WIZARD_INTERVAL" "$(_format_duration "$EYE_T_INTERVAL")" tmp_val; EYE_T_INTERVAL=$(_parse_duration "$tmp_val") ;;
+                2) _ask_val "$MSG_WIZARD_DURATION" "$(_format_duration "$EYE_T_DURATION")" tmp_val; EYE_T_DURATION=$(_parse_duration "$tmp_val") ;;
+                3) _ask_val "Group" "$EYE_T_GROUP" EYE_T_GROUP ;;
+                4) _ask_val "$MSG_WIZARD_COUNT" "$EYE_T_TARGET_COUNT" EYE_T_TARGET_COUNT; [[ "$EYE_T_TARGET_COUNT" -gt 0 ]] && EYE_T_REMAIN_COUNT="$EYE_T_TARGET_COUNT" || EYE_T_REMAIN_COUNT="-1" ;;
+                5) 
+                    _ask_bool "Enable Sound" "$( [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && echo "y" || echo "n" )" EYE_T_SOUND_ENABLE
+                    if [[ "$EYE_T_SOUND_ENABLE" == "true" ]]; then
+                        _cmd_sound list
+                        _ask_val "Sound Start" "$EYE_T_SOUND_START" EYE_T_SOUND_START
+                        [[ "$EYE_T_DURATION" -gt 0 ]] && _ask_val "Sound End" "$EYE_T_SOUND_END" EYE_T_SOUND_END
+                    fi
+                    ;;
+                6) 
+                    msg_help "Hint: Use {NAME}, {INTERVAL}, {DURATION}, {REMAIN} as variables."
+                    _ask_val "Message Start" "$EYE_T_MSG_START" EYE_T_MSG_START
+                    [[ "$EYE_T_DURATION" -gt 0 ]] && _ask_val "Message End" "$EYE_T_MSG_END" EYE_T_MSG_END
+                    ;;
+                7) _ask_bool "Is Temporary" "$( [[ "$EYE_T_IS_TEMP" == "true" ]] && echo "y" || echo "n" )" EYE_T_IS_TEMP ;;
+                s|S) _save_task "$task_id" && msg_success "Task updated."; return 0 ;;
+                q|Q) msg_info "Editing cancelled."; return 0 ;;
+                *) msg_warn "Invalid selection." ;;
+            esac
+        done
     fi
 }
 
@@ -417,10 +450,10 @@ _cmd_status() {
     [[ "$1" == "help" || "$1" == "-h" ]] && { msg_help "$MSG_HELP_STATUS_USAGE"; return; }
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --sort|-s) sort_key="$2"; shift 2 ;; 
-            --reverse|-r) reverse=true; shift ;; 
-            --long|-l) long_format=true; shift ;; 
-            *) shift ;; 
+            --sort|-s) sort_key="$2"; shift 2 ;;
+            --reverse|-r) reverse=true; shift ;;
+            --long|-l) long_format=true; shift ;;
+            *) shift ;;
         esac
     done
     local daemon_active=false ref_time=$(date +%s)
@@ -447,18 +480,14 @@ _cmd_status() {
     fi
     local rows=()
     shopt -s nullglob
-    local tasks=("$TASKS_DIR"/*)
-    if [[ ! -t 1 ]] && [[ -z "$target_task" ]]; then
+    local tasks=($TASKS_DIR/*)
+    if [[ ! -t 1 ]]; then
         for task_file in "${tasks[@]}"; do [[ $(basename "$task_file") == .* ]] && continue; basename "$task_file"; done
         return
     fi
     if [[ -z "$QUIET_MODE" && "$GLOBAL_QUIET" != "on" ]]; then
-            if [[ -z "$QUIET_MODE" && "$GLOBAL_QUIET" != "on" ]]; then
-                [ "$daemon_active" = "true" ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
-                if [ ! -t 1 ] && [ -z "$target_task" ]; then echo "$MSG_TASK_LIST_HEADER"; fi
-                echo ""
-            fi
-        
+        [ "$daemon_active" = "true" ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
+        echo ""
     fi
     [[ ${#tasks[@]} -eq 0 ]] && { echo " (No tasks found)"; return; }
     for task_file in "${tasks[@]}"; do
@@ -473,10 +502,10 @@ _cmd_status() {
             [[ "$EYE_T_IS_TEMP" == "true" ]] && name_display="[T]$tid"
             local sort_val=""
             case "$sort_key" in
-                name)    sort_val="$tid" ;; 
-                group)   sort_val="$EYE_T_GROUP" ;; 
-                next)    sort_val="$(printf "%012d" $diff_sec)" ;; 
-                created) sort_val=$(date -r "$task_file" +%s) ;; 
+                name)    sort_val="$tid" ;;
+                group)   sort_val="$EYE_T_GROUP" ;;
+                next)    sort_val="$(printf "%012d" $diff_sec)" ;;
+                created) sort_val=$(date -r "$task_file" +%s) ;;
             esac
             if [[ "$long_format" == "true" ]]; then
                 rows+=("$sort_val@$name_display@$EYE_T_GROUP@$(_format_duration $EYE_T_INTERVAL)@$(_format_duration $EYE_T_DURATION)@($EYE_T_REMAIN_COUNT/$EYE_T_TARGET_COUNT)@${EYE_T_STATUS^}@$(_format_duration $diff_sec)")
@@ -487,10 +516,13 @@ _cmd_status() {
     done
     local sorted_data
     [[ "$reverse" == "true" ]] && sorted_data=$(printf "%s\n" "${rows[@]}" | sort -rV | cut -d'@' -f2-) || sorted_data=$(printf "%s\n" "${rows[@]}" | sort -V | cut -d'@' -f2-)
-    if [[ "$long_format" == "true" ]]; then printf "%s\n" "$sorted_data" | column -t -s '@' -o ' │ '
-    else printf "%s\n" "$sorted_data" | column -t -s '@' -o '  '; fi
+    if [[ "$long_format" == "true" ]]; then
+        local header="ID@GROUP@INTERVAL@DUR@COUNT@STATUS@NEXT"
+        (echo "$header" && printf "%s\n" "$sorted_data") | column -t -s '@' -o ' │ '
+    else
+        printf "%s\n" "$sorted_data" | column -t -s '@' -o '  '
+    fi
 }
-
 _cmd_in() {
     local time_str="$1"; shift; local msg="$*"
     if [[ -z "$time_str" || "$time_str" == "help" || "$time_str" == "-h" ]]; then
