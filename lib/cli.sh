@@ -254,11 +254,13 @@ _cmd_add() {
     SOUND_END="complete"
     MSG_START=""
     MSG_END=""
-    LAST_RUN=$(date +%s)
+    LAST_RUN=0
+    CREATED_AT=$(date +%s)
+    LAST_TRIGGER_AT=0
     STATUS="running"
 
     if [[ $# -eq 0 ]]; then
-        msg_info "Creating task '$task_id'..."
+        msg_info "Creating task '$task_id'வைக்..."
         
         local tmp_val
         _ask_val "$MSG_WIZARD_INTERVAL" "20m" tmp_val
@@ -374,48 +376,101 @@ _cb_remove() {
 }
 
 _cmd_status() {
-    local sort_key="next" reverse=false long_format=false
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --sort|-s) sort_key="$2"; shift 2 ;;
-            --reverse|-r) reverse=true; shift ;;
-            --long|-l) long_format=true; shift ;;
-            *) shift ;;
-        esac
-    done
-    local daemon_active=false
-    local ref_time=$(date +%s)
-    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
-        daemon_active=true
-    else
-        # Use recorded stop time if available, otherwise directory mtime
-        if [ -f "$STOP_FILE" ]; then
-            ref_time=$(cat "$STOP_FILE")
-        else
-            ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+    local sort_key="next" reverse=false long_format=false target_task=""
+    
+    # 1. Positional arg check (is it a task?)
+    if [[ -n "$1" && "$1" != -* ]]; then
+        if [ -f "$TASKS_DIR/$1" ]; then
+            target_task="$1"
+            shift
         fi
     fi
 
-    if [ ! -t 1 ]; then echo "daemon_running=$daemon_active"; return; fi
-    
+    # 2. Flag parsing
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --sort|-s) sort_key="$2"; shift 2 ;; 
+            --reverse|-r) reverse=true; shift ;; 
+            --long|-l) long_format=true; shift ;; 
+            *) shift ;; 
+        esac
+    done
+
+    # 3. Base status
+    local daemon_active=false
+    local ref_time=$(date +%s)
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
+    then
+        daemon_active=true
+    else
+        [ -f "$STOP_FILE" ] && ref_time=$(cat "$STOP_FILE") || ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+    fi
+
+    # 4. Scenario A: Single Task Detail View (Vertical Table)
+    if [ -n "$target_task" ]; then
+        if [ ! -t 1 ]; then
+            cat "$TASKS_DIR/$target_task"
+            return
+        fi
+        
+        _load_task "$target_task"
+        
+        local created_fmt="Never"
+        [ "${CREATED_AT:-0}" -gt 0 ] && created_fmt=$(date -d "@$CREATED_AT" "+%Y-%m-%d %H:%M:%S")
+        local trigger_fmt="Never"
+        [ "${LAST_TRIGGER_AT:-0}" -gt 0 ] && trigger_fmt=$(date -d "@$LAST_TRIGGER_AT" "+%Y-%m-%d %H:%M:%S")
+        
+        # Calculate Next Run
+        local next_val=0
+        if [[ "$STATUS" == "running" ]]; then
+            next_val=$((INTERVAL - (ref_time - LAST_RUN)))
+            [[ $next_val -lt 0 ]] && next_val=0
+        fi
+        local next_run_fmt=$(_format_duration $next_val)
+
+        local labels=("ID" "GROUP" "INTERVAL" "DURATION" "COUNT" "TEMP" "SOUND" "S-START" "S-END" "MSG-S" "MSG-E" "STATUS" "NEXT" "CREATED" "L-TRIGGER")
+        local values=("$target_task" "$GROUP" "$(_format_duration $INTERVAL)" "$(_format_duration $DURATION)" "$REMAIN_COUNT/$TARGET_COUNT" "$IS_TEMP" "$SOUND_ENABLE" "$SOUND_START" "$SOUND_END" "${MSG_START:-None}" "${MSG_END:-None}" "${STATUS^}" "$next_run_fmt" "$created_fmt" "$trigger_fmt")
+        
+        # Use column -t with a dummy third column to force padding of the value column
+        local detail_rows=()
+        for i in "${!labels[@]}"; do
+            detail_rows+=("${labels[$i]}|${values[$i]}|.")
+        done
+        
+        # Format and then strip the dummy column '.'
+        local tmp_v=$(mktemp)
+        printf "%s\n" "${detail_rows[@]}" | column -t -s '|' -o ' │ ' | sed 's/ │ .$//' > "$tmp_v"
+        
+        # Generate borders by transforming a data line
+        local top_border=$(head -n1 "$tmp_v" | sed 's/[^│]/─/g; s/│/┬/g; s/^/┌─/; s/$/─┐/')
+        local bot_border=$(head -n1 "$tmp_v" | sed 's/[^│]/─/g; s/│/┴/g; s/^/└─/; s/$/─┘/')
+        
+        echo "$top_border"
+        while IFS= read -r line; do
+            echo "│ ${line} │"
+        done < "$tmp_v"
+        echo "$bot_border"
+        
+        rm -f "$tmp_v"
+        return
+    fi
+
+    # 5. Scenario B: List View (Compact or Long)
+    if [ ! -t 1 ] && [ -z "$target_task" ]; then echo "daemon_running=$daemon_active"; return; fi
     [ "$daemon_active" = true ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
     echo ""
     
     local rows=()
-
     shopt -s nullglob
-    local tasks=("$TASKS_DIR"/*)
-    if [[ ${#tasks[@]} -eq 0 ]]; then
-        echo " (No tasks found)"
-        return
-    fi
+    local tasks=($"$TASKS_DIR"/*)
+    [[ ${#tasks[@]} -eq 0 ]] && { echo " (No tasks found)"; return; }
 
     for task_file in "${tasks[@]}"; do
         [ -e "$task_file" ] || continue
-        task_id=$(basename "$task_file")
-        if _load_task "$task_id"; then
+        local tid=$(basename "$task_file")
+        if _load_task "$tid"; then
             local next_run="-" sort_val="" diff_sec=999999999
-            local status_fmt="${STATUS^}"
+            local status_text="${STATUS^}"
 
             if [[ "$STATUS" == "running" ]]; then
                 diff_sec=$((INTERVAL - (ref_time - LAST_RUN)))
@@ -423,37 +478,35 @@ _cmd_status() {
                 next_run=$(_format_duration $diff_sec)
             fi
             
-            local name_display="$task_id"
-            [[ "$IS_TEMP" == "true" ]] && name_display="[T]$task_id"
+            local name_display="$tid"
+            [[ "$IS_TEMP" == "true" ]] && name_display="[T]$tid"
+            if [ ${#name_display} -gt 15 ]; then name_display="${name_display:0:12}..."; fi
 
             local count_fmt=""
-            if [ "$TARGET_COUNT" -eq -1 ]; then
-                count_fmt="(∞)"
-            else
-                count_fmt="($REMAIN_COUNT/$TARGET_COUNT)"
-            fi
+            [ "$TARGET_COUNT" -eq -1 ] && count_fmt="(∞)" || count_fmt="($REMAIN_COUNT/$TARGET_COUNT)"
 
             local dur_fmt=$(_format_duration "$DURATION")
             [[ "$DURATION" -eq 0 ]] && dur_fmt="0s"
             local time_comb="$(_format_duration $INTERVAL)/$dur_fmt"
 
             case "$sort_key" in
-                name)    sort_val="$task_id" ;;
-                group)   sort_val="$GROUP" ;;
-                next)    sort_val="$(printf "%012d" $diff_sec)" ;;
-                created) sort_val=$(date -r "$task_file" +%s) ;;
+                name)    sort_val="$tid" ;; 
+                group)   sort_val="$GROUP" ;; 
+                next)    sort_val="$(printf "%012d" $diff_sec)" ;; 
+                created) sort_val=$(date -r "$task_file" +%s) ;; 
             esac
             
             if [ "$long_format" = true ]; then
-                # Boxed format data: ID|Group|Interval|Dur|Count|Status|Next
-                rows+=("$sort_val|$name_display|$GROUP|$(_format_duration $INTERVAL)|$dur_fmt|$count_fmt|$status_fmt|$next_run|")
+                # Boxed: ID | Group | Interval | Dur | Count | Status | Next
+                rows+=("$sort_val|$name_display|$GROUP|$(_format_duration $INTERVAL)|$dur_fmt|$count_fmt|$status_text|$next_run")
             else
-                # Compact format data: Status|ID|Timing|Count|Next|Group
-                rows+=("$sort_val|$status_fmt|$name_display|$time_comb|$count_fmt|$next_run|$GROUP")
+                # Aligned Compact: Status ID Timing Count Next Group
+                rows+=("$sort_val|$status_text|$name_display|$time_comb|$count_fmt|$next_run|$GROUP")
             fi
         fi
     done
 
+    # Sort
     local sorted_data
     if [ "$reverse" = true ]; then
         sorted_data=$(printf "%s\n" "${rows[@]}" | sort -rV | cut -d'|' -f2-)
@@ -462,25 +515,27 @@ _cmd_status() {
     fi
 
     if [ "$long_format" = true ]; then
-        local long_header="$MSG_TASK_ID|$MSG_TASK_GROUP|$MSG_TASK_INTERVAL|$MSG_TASK_DURATION|$MSG_TASK_COUNT|$MSG_TASK_STATUS|NEXT|"
+        # Horizontal Boxed Table
+        local long_header="$MSG_TASK_ID|$MSG_TASK_GROUP|$MSG_TASK_INTERVAL|$MSG_TASK_DURATION|$MSG_TASK_COUNT|$MSG_TASK_STATUS|NEXT"
         local tmp_f=$(mktemp)
         { echo "$long_header"; echo "$sorted_data"; } > "$tmp_f"
-        local table_content=$(sed 's/$/|./' "$tmp_f" | column -t -s '|' -o ' | ' | sed 's/ | .$//')
+        # Using placeholder '.' to prevent column from trimming last column padding
+        local table_content=$(sed 's/$/|./' "$tmp_f" | column -t -s '|' -o ' | ' | sed 's/ | .//')
         rm -f "$tmp_f"
-        local visual_width=$(echo "$table_content" | head -n1 | wc -L)
-        local h_line=$(printf "%${visual_width}s" "" | tr ' ' '-')
-        local border="+--${h_line}--+"
-        echo "$border"
+        
+        local v_width=$(echo "$table_content" | head -n1 | wc -L)
+        local h_line=$(printf "%${v_width}s" "" | tr ' ' '-')
+        echo "+--${h_line}--+"
         local i=0
         while IFS= read -r line; do
-            printf "|  %-${visual_width}s  |\n" "$line"
-            [[ $i -eq 0 ]] && echo "$border"
+            printf "|  %-${v_width}s  |\n" "$line"
+            [[ $i -eq 0 ]] && echo "+--${h_line}--+"
             ((i++))
         done <<< "$table_content"
-        echo "$border"
+        echo "+--${h_line}--+"
     else
-        # Default compact stream
-        printf "%s\n" "$sorted_data" | column -t
+        # Default Compact: Status  ID  Timing  Count  Next  Group
+        printf "%s\n" "$sorted_data" | column -t -s '|' -o '  '
     fi
 }
 
@@ -497,8 +552,7 @@ _cmd_in() {
     interval=$(_parse_duration "$time_str") || return 1
     local task_id="temp_$(date +%s)_$RANDOM"
     NAME="Reminder"; GROUP="temp"; INTERVAL="$interval"; DURATION=0; TARGET_COUNT=1; REMAIN_COUNT=1
-    IS_TEMP=true; SOUND_ENABLE=true; SOUND_START="default"; MSG_START="${msg:-Reminder}"
-    LAST_RUN=$(date +%s); STATUS="running"
+    IS_TEMP=true; SOUND_ENABLE=true; SOUND_START="default"; MSG_START="${msg:-Reminder}"; LAST_RUN=0; CREATED_AT=$(date +%s); STATUS="running"
     if _save_task "$task_id"; then msg_success "Reminder set for $time_str: $MSG_START"; fi
 }
 
@@ -508,7 +562,8 @@ _cmd_daemon() {
     _load_global_config
     case "$cmd" in
         up)
-            if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+            if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null;
+            then
                 msg_warn "Daemon already running."
             else
                 rm -f "$STOP_FILE"
@@ -516,7 +571,7 @@ _cmd_daemon() {
                 disown
                 msg_success "Daemon started."
             fi
-            ;;
+            ;; 
         down)
             if [ -f "$PID_FILE" ]; then
                 date +%s > "$STOP_FILE"
@@ -526,12 +581,12 @@ _cmd_daemon() {
             else
                 msg_info "Daemon not running."
             fi
-            ;;
+            ;; 
         default)
             local task="$1"
             if [[ -z "$task" ]]; then echo "Current default task: ${DEFAULT_TASK:-default}"
             else DEFAULT_TASK="$task"; _save_global_config; msg_success "Default task set to: $task"; fi
-            ;;
+            ;; 
         enable)
             mkdir -p "$SYSTEMD_DIR"
             local bin_path=$(readlink -f "$0")
@@ -551,14 +606,15 @@ EOF
             systemctl --user daemon-reload
             systemctl --user enable eye.service
             msg_success "Autostart enabled (Systemd)."
-            ;;
-        disable) systemctl --user disable eye.service; rm -f "$SERVICE_FILE"; systemctl --user daemon-reload; msg_success "Autostart disabled." ;;
-        quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;;
-        root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;;
-        language) LANGUAGE="$1"; _save_global_config; msg_success "Language set to: $LANGUAGE" ;;
-        help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;;
+            ;; 
+        disable) systemctl --user disable eye.service; rm -f "$SERVICE_FILE"; systemctl --user daemon-reload; msg_success "Autostart disabled." ;; 
+        quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;; 
+        root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;; 
+        language) LANGUAGE="$1"; _save_global_config; msg_success "Language set to: $LANGUAGE" ;; 
+        help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;; 
     esac
 }
+
 _cmd_usage() {
     echo "$MSG_USAGE_HEADER"
     echo ""

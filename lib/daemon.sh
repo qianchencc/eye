@@ -72,6 +72,7 @@ _execute_task() {
         
         # 更新状态
         LAST_RUN=$(date +%s)
+        LAST_TRIGGER_AT=$LAST_RUN
         _save_task "$task_id"
         _log_history "$task_id" "TRIGGERED"
     else
@@ -94,6 +95,7 @@ _execute_task() {
             
             # 更新状态
             LAST_RUN=$(date +%s)
+            LAST_TRIGGER_AT=$LAST_RUN
             _save_task "$task_id"
             _log_history "$task_id" "COMPLETED"
         else

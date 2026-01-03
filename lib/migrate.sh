@@ -4,17 +4,17 @@
 
 _migrate_v1_to_v2() {
     local old_config="$CONFIG_DIR/config"
-    local new_task_file="$TASKS_DIR/default"
+    local new_task_file="$TASKS_DIR/eye_rest"
     
     # 前置检查：
     # 1. 旧配置必须存在
-    # 2. 新的任务目录必须为空 (避免覆盖用户已有的 v2 配置)
+    # 2. 新的任务目录中如果没有 eye_rest (避免覆盖)
     if [[ ! -f "$old_config" ]]; then
         return 0
     fi
     
-    if ls "$TASKS_DIR"/* >/dev/null 2>&1; then
-        # v2 已经在使用中，不自动迁移
+    if [[ -f "$new_task_file" ]]; then
+        # 如果已经存在 eye_rest，说明可能已经迁移过或者已经有默认任务
         return 0
     fi
 
@@ -25,7 +25,7 @@ _migrate_v1_to_v2() {
         source "$old_config"
         
         # 转换变量
-        NAME="default"
+        NAME="eye_rest"
         GROUP="default"
         INTERVAL="${REST_GAP:-1200}"
         DURATION="${LOOK_AWAY:-20}"
@@ -34,8 +34,6 @@ _migrate_v1_to_v2() {
         IS_TEMP=false
         
         # 音效开关处理
-        # v1 SOUND_SWITCH=off 对应 v2 的任务级 SOUND_ENABLE=false 
-        # (虽然 v2 也有全局开关，但为了保险，先设在任务上)
         SOUND_ENABLE="true"
         if [[ "$SOUND_SWITCH" == "off" ]]; then
             SOUND_ENABLE="false"
@@ -44,12 +42,13 @@ _migrate_v1_to_v2() {
         SOUND_START="${SOUND_START:-default}"
         SOUND_END="${SOUND_END:-complete}"
         
-        LAST_RUN=$(date +%s)
+        local now=$(date +%s)
+        LAST_RUN=0
+        CREATED_AT=$now
+        LAST_TRIGGER_AT=0
         STATUS="running"
         
         # 写入新任务文件
-        # 这里不能用 _save_task，因为它依赖当前环境的变量
-        # 我们手动写入
         cat > "$new_task_file" <<EOF
 NAME="$NAME"
 GROUP="$GROUP"
@@ -61,13 +60,17 @@ IS_TEMP="$IS_TEMP"
 SOUND_ENABLE="$SOUND_ENABLE"
 SOUND_START="$SOUND_START"
 SOUND_END="$SOUND_END"
+MSG_START='Look away for {DURATION}!'
+MSG_END="Eyes rested. Keep going!"
 LAST_RUN="$LAST_RUN"
+CREATED_AT="$CREATED_AT"
+LAST_TRIGGER_AT="$LAST_TRIGGER_AT"
 STATUS="$STATUS"
 EOF
     )
 
     if [ $? -eq 0 ]; then
-        msg_success "✅ Migration successful: 'default' task created."
+        msg_success "✅ Migration successful: 'eye_rest' task created."
         mv "$old_config" "$old_config.bak"
         msg_info "ℹ️  Old config backed up to config.bak"
     else

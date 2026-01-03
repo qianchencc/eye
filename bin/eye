@@ -34,6 +34,7 @@ source "$LIB_DIR/migrate.sh"
 
 # Initialization
 _load_global_config
+_ensure_default_task
 _migrate_v1_to_v2
 _init_messages
 

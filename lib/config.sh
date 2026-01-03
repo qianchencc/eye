@@ -7,7 +7,33 @@ DEFAULT_GLOBAL_QUIET="off"
 DEFAULT_ROOT_CMD="help"
 DEFAULT_LANGUAGE="en"
 DEFAULT_SOUND_GLOBAL_OVERRIDE="on"
-DEFAULT_TASK="default"
+DEFAULT_TASK="eye_rest"
+
+# 确保至少有一个默认任务 (用于新安装)
+_ensure_default_task() {
+    # 如果任务目录为空，创建一个默认的护眼任务
+    if ! ls "$TASKS_DIR"/* >/dev/null 2>&1; then
+        local now=$(date +%s)
+        cat > "$TASKS_DIR/eye_rest" <<EOF
+NAME="eye_rest"
+GROUP="default"
+INTERVAL=1200
+DURATION=20
+TARGET_COUNT=-1
+REMAIN_COUNT=-1
+IS_TEMP=false
+SOUND_ENABLE=true
+SOUND_START="default"
+SOUND_END="complete"
+MSG_START='Look away for {DURATION}!'
+MSG_END="Eyes rested. Keep going!"
+LAST_RUN=0
+CREATED_AT=$now
+LAST_TRIGGER_AT=0
+STATUS="running"
+EOF
+    fi
+}
 
 # 加载全局配置 (eye.conf)
 _load_global_config() {

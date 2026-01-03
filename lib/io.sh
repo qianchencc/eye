@@ -42,6 +42,7 @@ _load_task() {
     # 清理旧的任务变量 (防止污染)
     unset NAME GROUP INTERVAL DURATION TARGET_COUNT REMAIN_COUNT IS_TEMP 
     unset SOUND_ENABLE SOUND_START SOUND_END MSG_START MSG_END LAST_RUN STATUS
+    unset CREATED_AT LAST_TRIGGER_AT
     
     # 设置默认值
     NAME="$task_id"
@@ -57,6 +58,8 @@ _load_task() {
     MSG_START=""
     MSG_END=""
     LAST_RUN=0
+    CREATED_AT=0
+    LAST_TRIGGER_AT=0
     STATUS="running"
     
     # Source 任务文件 (Key=Value 结构)
@@ -86,6 +89,8 @@ SOUND_END=$(printf %q "$SOUND_END")
 MSG_START=$(printf %q "$MSG_START")
 MSG_END=$(printf %q "$MSG_END")
 LAST_RUN=$(printf %q "$LAST_RUN")
+CREATED_AT=$(printf %q "$CREATED_AT")
+LAST_TRIGGER_AT=$(printf %q "$LAST_TRIGGER_AT")
 STATUS=$(printf %q "$STATUS")
 EOF
 )
