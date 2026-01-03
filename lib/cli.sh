@@ -81,6 +81,18 @@ _cb_cli_stop() {
     local id="$1"
     local duration="$2"
     _core_task_pause "$id" "$duration"
+    
+    # Kill the running process if it exists
+    local pid_file="$STATE_DIR/pids/$id"
+    if [[ -f "$pid_file" ]]; then
+        local pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null
+            msg_info "Task process ($pid) terminated."
+        fi
+        rm -f "$pid_file"
+    fi
+
     if [[ -n "$duration" ]]; then
         msg_info "Task $id paused for $duration (Until $(date -d "@$EYE_T_RESUME_AT" "+%H:%M:%S"))."
     else
@@ -121,6 +133,17 @@ _cb_cli_reset() {
 
 _cb_cli_remove() {
     local id="$1"
+    
+    # Kill the running process if it exists
+    local pid_file="$STATE_DIR/pids/$id"
+    if [[ -f "$pid_file" ]]; then
+        local pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null
+        fi
+        rm -f "$pid_file"
+    fi
+    
     rm -f "$TASKS_DIR/$id"
     msg_success "Task '$id' removed."
 }
@@ -339,6 +362,12 @@ _execute_add_single() {
         done
     fi
     _save_task "$task_id" && msg_success "$(printf "$MSG_TASK_CREATED" "$task_id")"
+    
+    # Check Daemon Status
+    if [[ ! -f "$PID_FILE" ]] || ! kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        msg_warn "⚠️  Daemon is NOT running. Task will not trigger until daemon is started."
+        msg_warn "   Run 'eye daemon up' to start."
+    fi
 }
 
 _cmd_edit() {
@@ -418,6 +447,11 @@ _cmd_remove() {
     _apply_to_tasks "$target" _cb_cli_remove
 }
 
+# Alias for remove
+_cmd_rm() {
+    _cmd_remove "$@"
+}
+
 _cmd_group() {
     local task_id="$1"
     local new_group="$2"
@@ -427,10 +461,13 @@ _cmd_group() {
         return
     fi
 
-    if [[ ! -t 0 ]]; then
+    # Refined Pipe Logic:
+    # Only assume pipe mode if stdin is not a TTY AND only one argument (group name) is provided.
+    # If two arguments are present, respect explicit task_id.
+    if [[ ! -t 0 && -z "$new_group" && -n "$task_id" ]]; then
         # Piped mode: $1 is the new group, IDs come from stdin
         new_group="$1"
-        task_id="" # _apply_to_tasks will read from stdin
+        task_id="" 
     fi
 
     if [[ -z "$task_id" && -t 0 ]]; then
@@ -469,7 +506,7 @@ _cmd_status() {
         [[ -f "$STOP_FILE" ]] && ref_time=$(cat "$STOP_FILE") || ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
     fi
     if [[ -n "$target_task" ]]; then
-        [[ ! -t 1 ]] && { source "$TASKS_DIR/$target_task" && env | grep "^EYE_T_"; return; }
+        [[ ! -t 1 ]] && { cat "$TASKS_DIR/$target_task"; return; }
         _load_task "$target_task"
         local created_fmt="Never" trigger_fmt="Never"
         [[ "${EYE_T_CREATED_AT:-0}" -gt 0 ]] && created_fmt=$(date -d "@$EYE_T_CREATED_AT" "+%Y-%m-%d %H:%M:%S")
@@ -488,10 +525,12 @@ _cmd_status() {
     local rows=()
     shopt -s nullglob
     local tasks=($TASKS_DIR/*)
+    
     if [[ ! -t 1 ]]; then
         for task_file in "${tasks[@]}"; do [[ $(basename "$task_file") == .* ]] && continue; basename "$task_file"; done
         return
     fi
+    
     if [[ -z "$QUIET_MODE" && "$GLOBAL_QUIET" != "on" ]]; then
         [ "$daemon_active" = "true" ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
         echo ""

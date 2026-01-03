@@ -89,7 +89,7 @@ shift
 case "$CMD" in
     add)        _cmd_add "$@" ;;
     list)       _cmd_status "$@" ;;
-    remove)     _cmd_remove "$@" ;;
+    remove|rm)  _cmd_remove "$@" ;;
     group)      _cmd_group "$@" ;;
     edit)       _cmd_edit "$@" ;;
     in)         _cmd_in "$@" ;;

@@ -93,7 +93,14 @@ _execute_task() {
     
     # 核心竞态防护：每任务文件锁
     if ! _try_lock "$task_id"; then return; fi
-    trap "_release_lock '$task_id'" EXIT
+    
+    # PID Registration
+    local pids_dir="$STATE_DIR/pids"
+    mkdir -p "$pids_dir"
+    echo "$BASHPID" > "$pids_dir/$task_id"
+    
+    # Updated Trap: Release lock AND remove PID file
+    trap "_release_lock '$task_id'; rm -f '$pids_dir/$task_id'" EXIT
 
     # 获取锁后重新加载
     _load_task "$task_id" || return
@@ -216,6 +223,10 @@ _daemon_loop() {
     _init_logger
     
     echo $BASHPID > "$PID_FILE"
+    
+    # Cleanup stale PIDs from previous runs
+    rm -rf "$STATE_DIR/pids"
+    mkdir -p "$STATE_DIR/pids"
     
     # Trap signals for cleanup
     trap '_daemon_cleanup' EXIT SIGINT SIGTERM

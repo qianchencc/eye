@@ -4,7 +4,7 @@ EYE="./bin/eye"
 TASKS_DIR="$HOME/.config/eye/tasks"
 
 # Setup
-rm -rf "$HOME/.config/eye/tasks"
+rm -f "$HOME/.config/eye/tasks"/*
 mkdir -p "$HOME/.config/eye/tasks"
 
 # Create a task
@@ -26,11 +26,11 @@ $EYE group test_task default
 source "$TASKS_DIR/test_task"
 [ "$EYE_T_GROUP" == "default" ] || { echo "FAIL: Setting group to default"; exit 1; }
 
-# 4. Test removing group (omitting argument)
-$EYE group test_task health
-$EYE group test_task
+# 4. Test Pipe Mode (Single argument = Group)
+# Since we are in a script (non-TTY), 'eye group new_group' should interpret 'new_group' as group name and read ID from stdin.
+echo "test_task" | $EYE group piped_group
 source "$TASKS_DIR/test_task"
-[ "$EYE_T_GROUP" == "default" ] || { echo "FAIL: Omitting group argument"; exit 1; }
+[ "$EYE_T_GROUP" == "piped_group" ] || { echo "FAIL: Pipe mode group assignment"; exit 1; }
 
 # 5. Test Dynamic Lifecycle (Auto-destruction)
 $EYE add lifecycle_task -g temp_group -i 1h
@@ -48,7 +48,9 @@ echo "PASS: dynamic lifecycle"
 $EYE group help 2>&1 | grep -qE "Usage:|用法:" || { echo "FAIL: Group help output"; exit 1; }
 
 # 6. Test missing task_id
-$EYE group 2>&1 | grep -qE "Usage:|用法:" || { echo "FAIL: Group missing task_id output"; exit 1; }
+# In non-TTY, this acts as pipe mode with empty input, producing "No tasks matched". 
+# In TTY, it produces "Usage". We accept either as a sign of error handling.
+$EYE group 2>&1 | grep -qE "Usage:|用法:|No tasks matched" || { echo "FAIL: Group missing task_id output"; exit 1; }
 
 echo "PASS: group command"
-rm -rf "$HOME/.config/eye/tasks"
+rm -f "$HOME/.config/eye/tasks"/*

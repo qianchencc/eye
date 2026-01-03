@@ -63,9 +63,9 @@
 * **Usage**: `eye in 30m "Take a nap"`
 * **描述**: 快速创建一次性临时任务。
 
-* **`rm <target>`**
-* **Usage**: `eye rm water`
-* **描述**: 物理删除任务文件。
+### `remove` (alias: `rm`)
+**Usage**: `eye remove <id>`, `eye rm <id>`
+**Description**: Permanently deletes a task file and kills any running instances.
 
 
 * **`group <target> [new_group]`**

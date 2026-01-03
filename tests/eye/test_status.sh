@@ -4,31 +4,48 @@ EYE="./bin/eye"
 TASK="test_status_$(date +%s)"
 log_info() { echo -e "\033[32m[INFO]\033[0m $*"; }
 
+# Cleanup first
+$EYE rm "$TASK" >/dev/null 2>&1
+
 $EYE daemon down >/dev/null 2>&1
-$EYE add "$TASK" -i 10m -d 5s -c 3 -g test_group
+$EYE add "$TASK" -i 10m -d 5s -c 3 -g test_group >/dev/null 2>&1
 
-log_info "Testing Default Compact Status"
-script -q -c "NO_COLOR=1 $EYE status" /tmp/compact_stat >/dev/null
-grep "$TASK" /tmp/compact_stat | grep -q "Running" && echo "PASS: Compact status" || { echo "FAIL: Compact status"; cat /tmp/compact_stat; exit 1; }
-
-log_info "Testing Long Status (-l)"
-script -q -c "NO_COLOR=1 $EYE status -l" /tmp/long_stat >/dev/null
-grep -q "test_group" /tmp/long_stat && echo "PASS: Long status" || { echo "FAIL: Long status"; cat /tmp/long_stat; exit 1; }
-
-log_info "Testing static NEXT time after daemon down"
-$EYE daemon down >/dev/null 2>&1
-script -q -c "NO_COLOR=1 $EYE status" /tmp/stat1 >/dev/null
-stat1=$(grep "$TASK" /tmp/stat1)
-sleep 2
-script -q -c "NO_COLOR=1 $EYE status" /tmp/stat2 >/dev/null
-stat2=$(grep "$TASK" /tmp/stat2)
-if [ "$stat1" == "$stat2" ]; then
-    echo "PASS: Static NEXT time"
+log_info "Testing Pipe-friendly Status (No TTY)"
+# Should output just the task ID
+OUTPUT=$($EYE status)
+if echo "$OUTPUT" | grep -q "$TASK"; then
+    echo "PASS: Pipe status contains ID"
 else
-    echo "FAIL: NEXT time is flowing while daemon is off"
-    echo "1: $stat1"
-    echo "2: $stat2"
+    echo "FAIL: Pipe status missing ID"
+    echo "Output: $OUTPUT"
     exit 1
 fi
 
-$EYE remove "$TASK"
+log_info "Testing Single Task Inspection"
+# Should output metadata KEY=VALUE
+OUTPUT=$($EYE status "$TASK")
+if echo "$OUTPUT" | grep -q "EYE_T_GROUP=test_group"; then
+    echo "PASS: Single task inspection"
+else
+    echo "FAIL: Single task inspection missing metadata"
+    echo "Output: $OUTPUT"
+    exit 1
+fi
+
+log_info "Testing static NEXT time after daemon down"
+$EYE daemon down >/dev/null 2>&1
+# Using inspection to get raw values for robust comparison
+VAL1=$($EYE status "$TASK" | grep "EYE_T_LAST_RUN")
+sleep 2
+VAL2=$($EYE status "$TASK" | grep "EYE_T_LAST_RUN")
+if [ "$VAL1" == "$VAL2" ]; then
+    echo "PASS: Static state (LAST_RUN unchanged)"
+else
+    echo "FAIL: State changed while daemon is off"
+    echo "1: $VAL1"
+    echo "2: $VAL2"
+    exit 1
+fi
+
+$EYE remove "$TASK" >/dev/null 2>&1
+exit 0

@@ -8,7 +8,7 @@ _eye_completions()
     _init_completion -n : || return
 
     # 1. Base Commands
-    local commands="add list remove edit in start stop pause resume now time count reset daemon status sound help version"
+    local commands="add list remove rm edit in start stop pause resume now time count reset daemon status sound help version"
     
     # 2. Subcommands
     local daemon_commands="up down enable disable default quiet root-cmd language help"
