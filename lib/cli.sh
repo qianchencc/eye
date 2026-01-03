@@ -533,31 +533,35 @@ _cmd_daemon() {
             done
 
             if [[ "$force" == "true" ]]; then
-                msg_info "🚀 Force updating to the latest remote version from main..."
-                git pull origin main && make install
-                msg_success "Eye force-updated successfully."
+                msg_info "🚀 Force updating to the latest version..."
+                # Only use git when user explicitly asks for a force update
+                git pull origin master && make install
+                msg_success "Eye force-updated."
                 return 0
             fi
 
-            msg_info "🔍 Checking for updates (comparing versions)..."
-            if ! git remote get-url origin >/dev/null 2>&1; then
-                msg_error "Error: No remote 'origin' found. Update requires a git repository."
-                return 1
-            fi
-            git fetch origin main >/dev/null 2>&1
-            local remote_version=$(git show origin/main:lib/constants.sh 2>/dev/null | grep "EYE_VERSION=" | cut -d'"' -f2)
+            msg_info "🔍 Checking for updates..."
+            # Directly use the raw URL for version check to avoid git remote auth
+            local raw_url="https://raw.githubusercontent.com/qianchencc/eye/master/lib/constants.sh"
+            local remote_version=$(curl -s --connect-timeout 5 "$raw_url" | grep "EYE_VERSION=" | cut -d'"' -f2)
+            
             if [[ -z "$remote_version" ]]; then
-                msg_error "Error: Could not retrieve remote version from 'main' branch."
+                # Fallback to main
+                raw_url="https://raw.githubusercontent.com/qianchencc/eye/main/lib/constants.sh"
+                remote_version=$(curl -s --connect-timeout 5 "$raw_url" | grep "EYE_VERSION=" | cut -d'"' -f2)
+            fi
+
+            if [[ -z "$remote_version" ]]; then
+                msg_error "Error: Could not retrieve remote version. (Is network available?)"
                 return 1
             fi
+
             if [[ "$EYE_VERSION" == "$remote_version" ]]; then
-                msg_success "Eye is already at the latest version ($EYE_VERSION)."
+                msg_success "Eye is up to date ($EYE_VERSION)."
             else
-                msg_warn "Update available! Local: $EYE_VERSION -> Remote: $remote_version"
+                msg_warn "Update available: $remote_version"
                 if [[ "$apply" == "true" ]]; then
-                    msg_info "Applying update from main..."
-                    git pull origin main && make install
-                    msg_success "Eye updated to $remote_version. Please restart the daemon."
+                    git pull origin master && make install
                 else
                     msg_info "Run 'eye daemon update --apply' to upgrade."
                 fi

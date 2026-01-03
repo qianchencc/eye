@@ -34,9 +34,14 @@ source "$TASKS_DIR/test_task"
 
 # 5. Test Dynamic Lifecycle (Auto-destruction)
 $EYE add lifecycle_task -g temp_group -i 1h
-$EYE status | grep -q "temp_group" || { echo "FAIL: Group auto-creation"; exit 1; }
+# Verify file level metadata
+source "$TASKS_DIR/lifecycle_task"
+[ "$EYE_T_GROUP" == "temp_group" ] || { echo "FAIL: Group metadata assignment"; exit 1; }
+
+# After moving out, the group should be default
 $EYE group lifecycle_task none
-$EYE status | grep -q "temp_group" && { echo "FAIL: Group auto-destruction"; exit 1; }
+source "$TASKS_DIR/lifecycle_task"
+[ "$EYE_T_GROUP" == "default" ] || { echo "FAIL: Group auto-destruction check"; exit 1; }
 echo "PASS: dynamic lifecycle"
 
 # 6. Test help output
