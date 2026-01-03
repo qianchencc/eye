@@ -32,6 +32,7 @@ _init_messages() {
         MSG_USAGE_MANAGE="任务管理:"
         MSG_USAGE_CMD_ADD="  add <name>       创建任务 (支持交互/参数)"
         MSG_USAGE_CMD_RM="  remove <id>      删除任务"
+        MSG_USAGE_CMD_GROUP="  group <id> [grp] 修改任务分组"
         MSG_USAGE_CMD_EDIT="  edit <id>        修改任务"
         MSG_USAGE_CMD_LIST="  list             列出所有任务"
         MSG_USAGE_CMD_STATUS="  status           显示全状态看板 (支持排序)"
@@ -131,6 +132,18 @@ _init_messages() {
   eye stop @work 1h      将 work 组暂停 1 小时
   eye stop --all         暂停所有任务"
 
+        MSG_HELP_GROUP_USAGE="用法: eye group <task_id> [group_name]
+
+描述: 修改指定任务的分组属性。
+
+参数:
+  task_id                任务 ID (必填)
+  group_name             新的组名 (可选)。若省略或设为 'none'/'default'，则将该任务移出当前组。
+
+示例:
+  eye group water health      将 'water' 任务移动到 'health' 组
+  eye group vision none        将 'vision' 任务移出当前组"
+
         # General Messages
         MSG_TASK_CREATED="✅ 任务已创建: %s"
         MSG_TASK_REMOVED="🗑️  任务已删除: %s"
@@ -210,6 +223,7 @@ _init_messages() {
         MSG_USAGE_MANAGE="Task Management:"
         MSG_USAGE_CMD_ADD="  add <name>       Create task (interactive/flags)"
         MSG_USAGE_CMD_RM="  remove <id>      Delete task"
+        MSG_USAGE_CMD_GROUP="  group <id> [grp] Modify task group"
         MSG_USAGE_CMD_EDIT="  edit <id>        Edit task"
         MSG_USAGE_CMD_LIST="  list             List all tasks"
         MSG_USAGE_CMD_STATUS="  status           Show status dashboard (sortable)"
@@ -308,6 +322,18 @@ Examples:
   eye stop water         Pause water task indefinitely
   eye stop @work 1h      Pause work group for 1 hour
   eye stop --all         Pause all tasks"
+
+        MSG_HELP_GROUP_USAGE="Usage: eye group <task_id> [group_name]
+
+Description: Modify the group attribute of a specific task.
+
+Arguments:
+  task_id                Task ID (Required)
+  group_name             New group name (Optional). If omitted or set to 'none'/'default', the task is moved out of its current group.
+
+Examples:
+  eye group water health      Move 'water' task to 'health' group
+  eye group vision none        Remove 'vision' task from its current group"
 
         # General Messages
         MSG_TASK_CREATED="✅ Task created: %s"

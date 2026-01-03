@@ -68,6 +68,15 @@
 * **描述**: 物理删除任务文件。
 
 
+* **`group <target> [new_group]`**
+* **Usage**: `eye group task1 health`
+* **描述**: 修改任务的分组。若 `new_group` 为空或为 `none`/`default`，则将任务移出当前组。
+* **参数**:
+    * `target`: 任务 ID (必填)。
+    * `new_group`: 新的组名 (可选)。
+    * **提示**: 此命令仅修改单个任务的组属性。
+
+
 ### 1.4 状态操纵 (Manipulation)
 
 * **`time <delta> [target]`**

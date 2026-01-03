@@ -279,6 +279,31 @@ _cmd_remove() {
     _apply_to_tasks "$target" _cb_cli_remove
 }
 
+_cmd_group() {
+    local task_id="$1"
+    local new_group="$2"
+
+    if [[ -z "$task_id" || "$task_id" == "help" || "$task_id" == "-h" ]]; then
+        msg_info "$MSG_HELP_GROUP_USAGE"
+        return
+    fi
+
+    if [[ ! -f "$TASKS_DIR/$task_id" ]]; then
+        msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"
+        return 1
+    fi
+
+    # Normalize group name
+    if [[ -z "$new_group" || "$new_group" == "none" || "$new_group" == "default" ]]; then
+        new_group="default"
+    fi
+
+    _load_task "$task_id"
+    EYE_T_GROUP="$new_group"
+    _save_task "$task_id"
+    msg_success "Task '$task_id' moved to group '$new_group'."
+}
+
 _cmd_status() {
     local sort_key="next" reverse=false long_format=false target_task=""
     if [[ -n "$1" && "$1" != -* && "$1" != "help" ]]; then
@@ -444,6 +469,7 @@ _cmd_usage() {
     echo "$MSG_USAGE_MANAGE"
     echo "$MSG_USAGE_CMD_ADD"
     echo "$MSG_USAGE_CMD_RM"
+    echo "$MSG_USAGE_CMD_GROUP"
     echo "$MSG_USAGE_CMD_EDIT"
     echo "$MSG_USAGE_CMD_LIST"
     echo "$MSG_USAGE_CMD_STATUS"
