@@ -36,5 +36,17 @@ When a user stops a task:
 2.  **Kill Children**: Daemon (or CLI as fallback) iterates through ALL files in `$STATE_DIR/pids/` and kills the corresponding processes.
 3.  **Cleanup**: Removes the `pids/` directory.
 
-## 4. Crash Recovery
+## 4. Resource Contention & Locking
+
+### 4.1 Global Cycle Lock
+To prevent overlapping notifications and audio chaos, `eye` employs a Global Cycle Lock (`cycle.lock`).
+- **Scope**: The lock covers the entire interaction phase: Start Sound + Execution Duration + End Sound + 1s Buffer.
+- **Queueing**: If a task triggers while another task holds the lock, it will wait (queue) until the lock is released.
+- **Buffer**: A mandatory **1-second delay** is enforced after the lock is released to ensure system audio resources are fully freed.
+
+### 4.2 Blocking Interaction
+- **Audio**: All audio playback providers (paplay, mpv, etc.) run in **blocking mode**. The execution process waits for the sound to finish before proceeding to the next step or releasing the lock.
+- **Notifications**: Desktop notifications remain asynchronous to avoid blocking on user dismissal.
+
+## 5. Crash Recovery
 - **Stale PIDs**: On `eye daemon up`, the Daemon MUST clean up any leftover files in `pids/`, as no tasks should be running from a previous session.

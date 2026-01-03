@@ -16,8 +16,24 @@ sleep 1
 
 # 3. Verify daemon is active
 log_info "Verifying daemon status"
-script -q -c "NO_COLOR=1 $EYE status" /tmp/active_stat >/dev/null
-grep -q "Daemon: Active" /tmp/active_stat && echo "PASS: Daemon started manually" || { echo "FAIL: Daemon failed to start"; cat /tmp/active_stat; exit 1; }
+RETRIES=5
+SUCCESS=0
+while [ $RETRIES -gt 0 ]; do
+    script -q -c "NO_COLOR=1 $EYE status" /tmp/active_stat >/dev/null
+    if grep -q "Daemon: Active" /tmp/active_stat; then
+        echo "PASS: Daemon started manually"
+        SUCCESS=1
+        break
+    fi
+    sleep 1
+    RETRIES=$((RETRIES - 1))
+done
+
+if [ $SUCCESS -eq 0 ]; then
+    echo "FAIL: Daemon failed to start"
+    cat /tmp/active_stat
+    exit 1
+fi
 
 # 4. Stop daemon
 log_info "Stopping daemon"

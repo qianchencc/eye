@@ -105,12 +105,16 @@ _execute_task() {
     # 获取锁后重新加载
     _load_task "$task_id" || return
 
-    # 状态检查
-    if [[ "$EYE_T_STATUS" != "running" ]]; then return; fi
+    # 状态检查 (Allow force run)
+    if [[ "$EYE_T_STATUS" != "running" && "$EYE_FORCE_RUN" != "true" ]]; then 
+        log_debug "$task_id" "Execution cancelled: Status is $EYE_T_STATUS"
+        return; 
+    fi
     
     # 竞态二次校验 (1秒防抖)
     local now=$(date +%s)
     if [[ "${EYE_T_LAST_TRIGGER_AT:-0}" -ne 0 && $((now - EYE_T_LAST_TRIGGER_AT)) -lt 1 ]]; then
+        log_debug "$task_id" "Execution cancelled: Debounce protection"
         return
     fi
 
@@ -124,10 +128,6 @@ _execute_task() {
 
     log_task "$task_id" "START" "Execution begun (Duration: $EYE_T_DURATION)"
 
-    if [[ "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
-        EYE_T_REMAIN_COUNT=$((EYE_T_REMAIN_COUNT - 1))
-    fi
-
     local start_msg=$(_format_msg "${EYE_T_MSG_START:-$MSG_NOTIFY_BODY_START}")
     local end_msg=$(_format_msg "${EYE_T_MSG_END:-$MSG_NOTIFY_BODY_END}")
 
@@ -135,7 +135,7 @@ _execute_task() {
     # Attempt to acquire global cycle lock before user interaction
     if _acquire_global_cycle_lock "$task_id"; then
         # Ensure we release it even if we crash here
-        trap "_release_global_cycle_lock '$task_id'; _release_lock '$task_id'" EXIT
+        trap "_release_global_cycle_lock '$task_id'; _release_lock '$task_id'; rm -f '$pids_dir/$task_id'" EXIT
         
         if [[ "$EYE_T_DURATION" -le 0 ]]; then
             _notify_provider "${EYE_T_NAME:-$task_id}" "$start_msg"
@@ -144,43 +144,28 @@ _execute_task() {
             _notify_provider "${EYE_T_NAME:-$task_id}" "$start_msg"
             [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && _play_provider "$EYE_T_SOUND_START"
             
-            # The wait happens HOLDING the cycle lock? 
-            # If we hold the lock during the entire duration (e.g. 20s), no other task can start notifying.
-            # This serializes the breaks. This is likely the intended "Competition".
             sleep "$EYE_T_DURATION"
             
             _notify_provider "${EYE_T_NAME:-$task_id}" "$end_msg"
             [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && _play_provider "$EYE_T_SOUND_END"
         fi
 
+        # User requested delay after interaction to prevent audio overlap
+        sleep 1
         _release_global_cycle_lock "$task_id"
         # Reset trap to just file lock
-        trap "_release_lock '$task_id'" EXIT
+        trap "_release_lock '$task_id'; rm -f '$pids_dir/$task_id'" EXIT
     else
         log_error "$task_id" "Skipped interaction due to lock timeout"
     fi
 
     # --- State Merge & Persistence ---
-    # CRITICAL FIX: Reload task data from disk before saving to prevent 
-    # overwriting status changes (like 'pause') that occurred during execution.
-    local old_remain=$EYE_T_REMAIN_COUNT
     if _load_task "$task_id"; then
-        # Restore the local execution updates to the fresh state
         EYE_T_LAST_TRIGGER_AT=$(date +%s)
-        
-        # Merge Count:
-        # If we decremented count locally, we should reflect that.
-        # But if the user changed the count during execution, what do we do?
-        # A simple approach: Apply the decrement to the NEW count if it's still > 0
         if [[ "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
-            # Re-calculate remaining based on fresh data, assuming one cycle consumed
             EYE_T_REMAIN_COUNT=$((EYE_T_REMAIN_COUNT - 1))
-        else
-            # If it was infinite, keep it infinite (or whatever the file says)
-            :
         fi
     else
-        # File might have been deleted
         log_warn "$task_id" "Task file vanished during execution"
         return
     fi
@@ -200,7 +185,6 @@ _execute_task() {
         fi
     fi
 }
-
 _daemon_cleanup() {
     log_system "Daemon" "Shutting down... Cleaning up child processes."
     
@@ -284,19 +268,21 @@ _daemon_loop() {
         _load_global_config
         _init_messages
 
+        # Reap background processes and update PID map
+        jobs > /dev/null 
+        for pid in "${!RUNNING_PID_MAP[@]}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                log_debug "Daemon" "Reaped task process $pid"
+                unset RUNNING_PID_MAP["$pid"]
+            fi
+        done
+
         # 扫描任务并触发
         for task_file in "$TASKS_DIR"/*; do
             [[ $(basename "$task_file") == .* ]] && continue
             [ -e "$task_file" ] || continue
             task_id=$(basename "$task_file")
             
-            # 清理已经结束的后台进程
-            for pid in "${!RUNNING_PID_MAP[@]}"; do
-                if ! kill -0 "$pid" 2>/dev/null; then
-                    unset RUNNING_PID_MAP["$pid"]
-                fi
-            done
-
             if _load_task "$task_id"; then
                 # 检查此任务是否已经在运行列表中（通过 PID 映射或物理锁文件检测）
                 local is_running=false
@@ -322,7 +308,10 @@ _daemon_loop() {
                     fi
                 fi
 
-                [[ "$is_running" == "true" ]] && continue
+                if [[ "$is_running" == "true" ]]; then
+                    log_debug "$task_id" "Skip: Task is still running (Lock/PID check)"
+                    continue
+                fi
 
                 local now=$(date +%s)
                 # 自动恢复
@@ -335,6 +324,9 @@ _daemon_loop() {
                 # 检查执行
                 if [[ "$EYE_T_STATUS" == "running" ]]; then
                     current_time=$(date +%s)
+                    local diff=$((current_time - EYE_T_LAST_RUN))
+                    log_debug "$task_id" "Check: diff=$diff, interval=$EYE_T_INTERVAL"
+                    
                     # 终极对齐保护：如果 LAST_RUN 为 0，说明是异常状态，立即对齐到当前时间以启动计时
                     if [[ "${EYE_T_LAST_RUN:-0}" -eq 0 ]]; then
                         EYE_T_LAST_RUN=$current_time
@@ -343,24 +335,27 @@ _daemon_loop() {
                         continue
                     fi
 
-                    if [ $((current_time - EYE_T_LAST_RUN)) -ge "$EYE_T_INTERVAL" ]; then
+                    if [ $diff -ge "$EYE_T_INTERVAL" ]; then
                         # Update timestamp BEFORE backgrounding to prevent re-triggering
-                        local intervals_passed=$(( (current_time - EYE_T_LAST_RUN) / EYE_T_INTERVAL ))
+                        local intervals_passed=$(( diff / EYE_T_INTERVAL ))
                         EYE_T_LAST_RUN=$(( EYE_T_LAST_RUN + (intervals_passed * EYE_T_INTERVAL) ))
                         _save_task "$task_id"
                         
-                        log_sched "$task_id" "Triggering (Interval: $EYE_T_INTERVAL)"
+                        log_sched "$task_id" "Triggering (Passed: $intervals_passed intervals)"
                         # 触发执行并记录 PID
                         _execute_task "$task_id" &
                         RUNNING_PID_MAP[$!]="$task_id"
                     fi
+                else
+                    log_debug "$task_id" "Skip: Status is $EYE_T_STATUS"
                 fi
             fi
         done
         
         # 混合等待机制：
         if [ "$has_inotify" = true ]; then
-            inotifywait -t 5 -q -e close_write,create,delete "$TASKS_DIR" >/dev/null 2>&1 || true
+            # Add moved_to because _save_task uses 'mv'
+            inotifywait -t 5 -q -e close_write,create,delete,moved_to "$TASKS_DIR" >/dev/null 2>&1 || true
         else
             sleep 5
         fi

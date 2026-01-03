@@ -17,7 +17,7 @@ $EYE stop @health
 source "$TASKS_DIR/task_h1"
 [ "$EYE_T_STATUS" == "paused" ] || { echo "FAIL: Exact group match"; exit 1; }
 source "$TASKS_DIR/task_w1"
-[ "$EYE_T_STATUS" == "running" ] || { echo "FAIL: Side effect in exact match"; exit 1; }
+[ "$EYE_T_STATUS" == "stopped" ] || { echo "FAIL: Side effect in exact match"; exit 1; }
 
 # 2. Test regex match (prefix)
 $EYE stop "@work_.*"

@@ -26,7 +26,7 @@ source "$TASKS_DIR/group_a_1"
 source "$TASKS_DIR/group_a_2"
 [ "$EYE_T_STATUS" == "paused" ] || { echo "FAIL: Piped filtered stop (a2)"; exit 1; }
 source "$TASKS_DIR/group_b_1"
-[ "$EYE_T_STATUS" == "running" ] || { echo "FAIL: Piped filtered stop side effect (b1)"; exit 1; }
+[ "$EYE_T_STATUS" == "stopped" ] || { echo "FAIL: Piped filtered stop side effect (b1)"; exit 1; }
 echo "PASS: Filtered control via pipe"
 
 # 3. Test Bulk Attribute Modification (List -> Group)

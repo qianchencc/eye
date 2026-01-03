@@ -46,17 +46,17 @@ _notify_provider() {
 
 _provider_play_paplay() {
     local file="$1"
-    paplay "$file" >/dev/null 2>&1 &
+    paplay "$file" >/dev/null 2>&1
 }
 
 _provider_play_mpv() {
     local file="$1"
-    mpv --no-video --really-quiet "$file" >/dev/null 2>&1 &
+    mpv --no-video --really-quiet "$file" >/dev/null 2>&1
 }
 
 _provider_play_aplay() {
     local file="$1"
-    aplay -q "$file" >/dev/null 2>&1 &
+    aplay -q "$file" >/dev/null 2>&1
 }
 
 _play_provider() {

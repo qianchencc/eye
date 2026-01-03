@@ -10,13 +10,17 @@
 * **`start [target]`**
 * **Usage**: `eye start`, `eye start task1`, `eye start @work`
 * **描述**:
-    * 无参数：启动 Daemon（如果未运行）。
-    * 有参数：将目标任务状态设为 `running`，并更新 `LAST_RUN` 为当前时间。
+    * 将目标任务状态设为 `running`。
+    * **强制校验**: 若守护进程（Daemon）未运行，此命令将报错并拒绝修改状态。
+    * **对齐**: 启动时会自动对齐 `LAST_RUN` 时间戳。
 
 
 * **`stop [target]`**
-* **Usage**: `eye stop task1`, `eye stop @work`
-* **描述**: 将目标任务状态设为 `stopped`。
+* **Usage**: `eye stop task1`, `eye stop @work`, `eye stop 30m`
+* **描述**: 
+    * 将目标任务状态设为 `paused`（暂停）。
+    * **立即停止**: 立即杀死（SIGTERM）正在运行的任务子进程。
+    * **定时暂停**: 支持 `30m` 等参数，到期后由 Daemon 自动恢复。
 
 
 * **`pause [target]`**
@@ -52,6 +56,7 @@
 * **`add <name> [options]`**
 * **Usage**: `eye add water -i 1h`, `eye add new_task --edit`
 * **描述**: 创建新任务。
+* **特性**: **新任务默认处于 `stopped` 状态**，需手动执行 `eye start` 激活（且需 Daemon 在线）。
 * **参数**:
     * `--interval, -i <time>`: 间隔 (如 `20m`)。
     * `--duration, -d <time>`: 持续时间 (默认 `0`)。

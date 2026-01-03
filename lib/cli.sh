@@ -69,6 +69,13 @@ _apply_to_tasks() {
 
 _cb_cli_start() {
     local id="$1"
+    
+    # Check Daemon Status
+    if [[ ! -f "$PID_FILE" ]] || ! kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        msg_error "Cannot start task '$id': Daemon is inactive."
+        return 1
+    fi
+
     _core_task_start "$id"
     # When explicitly 'starting' a task, restore count if it was finished
     if [[ "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
@@ -223,7 +230,7 @@ _cmd_now() {
     for tid in $task_id; do
         if [[ -f "$TASKS_DIR/$tid" ]]; then
             msg_info "Triggering $tid immediately..."
-            ( _load_task "$tid" && _execute_task "$tid" ) &
+            ( export EYE_FORCE_RUN=true; _load_task "$tid" && _execute_task "$tid" ) &
         else
             msg_error "Task not found: $tid"
         fi
@@ -320,7 +327,7 @@ _execute_add_single() {
     EYE_T_NAME="$task_id"; EYE_T_GROUP="default"; EYE_T_INTERVAL=1200; EYE_T_DURATION=20
     EYE_T_TARGET_COUNT=-1; EYE_T_REMAIN_COUNT=-1; EYE_T_IS_TEMP=false; EYE_T_SOUND_ENABLE=true
     EYE_T_SOUND_START="default"; EYE_T_SOUND_END="complete"; EYE_T_MSG_START=""; EYE_T_MSG_END=""
-    EYE_T_LAST_RUN="$now"; EYE_T_CREATED_AT="$now"; EYE_T_LAST_TRIGGER_AT=0; EYE_T_STATUS="running"
+    EYE_T_LAST_RUN="$now"; EYE_T_CREATED_AT="$now"; EYE_T_LAST_TRIGGER_AT=0; EYE_T_STATUS="stopped"
 
     if [[ $# -eq 0 && -t 0 ]]; then
         local tmp_val
@@ -361,6 +368,8 @@ _execute_add_single() {
             esac
         done
     fi
+    # Align LAST_RUN to exact save time to prevent NEXT=0 if wizard was slow
+    EYE_T_LAST_RUN=$(date +%s)
     _save_task "$task_id" && msg_success "$(printf "$MSG_TASK_CREATED" "$task_id")"
     
     # Check Daemon Status

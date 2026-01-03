@@ -32,7 +32,7 @@ EYE_T_MSG_END="Eyes rested. Keep going!"
 EYE_T_LAST_RUN=$now
 EYE_T_CREATED_AT=$now
 EYE_T_LAST_TRIGGER_AT=0
-EYE_T_STATUS="running"
+EYE_T_STATUS="stopped"
 EOF
     fi
 }

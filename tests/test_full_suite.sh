@@ -14,6 +14,14 @@ FAILED=0
 # Run all tests in tests/eye/
 for test_script in tests/eye/*.sh; do
     echo "Running $(basename "$test_script")..."
+    
+    # Ensure daemon is running before each test
+    PID_FILE="$HOME/.local/state/eye/daemon.pid"
+    if [[ ! -f "$PID_FILE" ]] || ! kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+         ./bin/eye daemon up >/dev/null 2>&1
+         sleep 1
+    fi
+    
     # Use timeout 20s to prevent hanging
     if timeout 20s bash "$test_script"; then
         echo "✅ PASS: $(basename "$test_script")"

@@ -10,8 +10,8 @@ LOG_LEVEL_WARN=2
 LOG_LEVEL_ERROR=3
 LOG_LEVEL_SYSTEM=4 # Special level for critical system events
 
-# Current Log Level (Default to INFO)
-CURRENT_LOG_LEVEL=$LOG_LEVEL_INFO
+# Current Log Level (Set to DEBUG for troubleshooting)
+CURRENT_LOG_LEVEL=$LOG_LEVEL_DEBUG
 
 # Colors for log file (optional, readable with less -R)
 _LOG_C_RESET='\033[0m'
@@ -45,7 +45,8 @@ _log_write() {
     local ts=$(date '+%Y-%m-%d %H:%M:%S')
     
     # Format: [Timestamp] [PID] [Level] [Component] Message
-    echo -e "${color}[$ts] [$$] [$level_name] [$component] $msg${_LOG_C_RESET}" >> "$HISTORY_LOG"
+    # Use BASHPID to show actual subshell PID
+    echo -e "${color}[$ts] [$BASHPID] [$level_name] [$component] $msg${_LOG_C_RESET}" >> "$HISTORY_LOG"
 }
 
 log_debug() {
