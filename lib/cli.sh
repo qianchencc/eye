@@ -126,7 +126,7 @@ _cb_cli_remove() {
 _cmd_start() {
     local target="$1"
     if [[ "$target" == "help" || "$target" == "-h" ]]; then
-        msg_info "$MSG_USAGE_CMD_START"
+        msg_help "$MSG_USAGE_CMD_START"
         return
     fi
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
@@ -140,7 +140,7 @@ _cmd_stop() {
     local target="" duration=""
     
     if [[ "$arg1" == "help" || "$arg1" == "-h" ]]; then
-        msg_info "$MSG_HELP_STOP_USAGE"
+        msg_help "$MSG_HELP_STOP_USAGE"
         return
     fi
 
@@ -164,7 +164,7 @@ _cmd_stop() {
 _cmd_resume() {
     local target="$1"
     if [[ "$target" == "help" || "$target" == "-h" ]]; then
-        msg_info "$MSG_USAGE_CMD_RESUME"
+        msg_help "$MSG_USAGE_CMD_RESUME"
         return
     fi
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
@@ -175,7 +175,7 @@ _cmd_resume() {
 _cmd_now() {
     local task_id="$1"
     if [[ "$task_id" == "help" || "$task_id" == "-h" ]]; then
-        msg_info "$MSG_USAGE_CMD_NOW"
+        msg_help "$MSG_USAGE_CMD_NOW"
         return
     fi
     
@@ -200,7 +200,7 @@ _cmd_now() {
 _cmd_time() {
     local delta="$1" target="$2"
     if [[ -z "$delta" || "$delta" == "help" || "$delta" == "-h" ]]; then
-        msg_info "Usage: eye time <delta> [target]"
+        msg_help "Usage: eye time <delta> [target]"
         return
     fi
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
@@ -210,7 +210,7 @@ _cmd_time() {
 _cmd_count() {
     local delta="$1" target="$2"
     if [[ -z "$delta" || "$delta" == "help" || "$delta" == "-h" ]]; then
-        msg_info "Usage: eye count <delta> [target]"
+        msg_help "Usage: eye count <delta> [target]"
         return
     fi
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
@@ -220,7 +220,7 @@ _cmd_count() {
 _cmd_reset() {
     local target="" do_time=false do_count=false
     if [[ "$1" == "help" || "$1" == "-h" ]]; then
-        msg_info "Usage: eye reset [target] --time --count"
+        msg_help "Usage: eye reset [target] --time --count"
         return
     fi
     while [[ $# -gt 0 ]]; do
@@ -236,6 +236,12 @@ _cmd_reset() {
 }
 
 _cmd_add() {
+    # Explicit help check
+    if [[ "$1" == "help" || "$1" == "-h" ]]; then
+        msg_help "$MSG_HELP_ADD_USAGE"
+        return
+    fi
+
     local task_ids=()
     local options=()
     
@@ -255,7 +261,7 @@ _cmd_add() {
     fi
 
     if [[ ${#task_ids[@]} -eq 0 ]]; then
-        msg_info "$MSG_HELP_ADD_USAGE"
+        msg_help "$MSG_HELP_ADD_USAGE"
         return
     fi
     
@@ -321,7 +327,7 @@ _execute_add_single() {
 
 _cmd_edit() {
     local task_id="$1"; shift
-    [[ -z "$task_id" || "$task_id" == "help" || "$task_id" == "-h" ]] && { msg_info "$MSG_HELP_EDIT_USAGE"; return; }
+    [[ -z "$task_id" || "$task_id" == "help" || "$task_id" == "-h" ]] && { msg_help "$MSG_HELP_EDIT_USAGE"; return; }
     [[ ! -f "$TASKS_DIR/$task_id" ]] && { msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"; return 1; }
     _load_task "$task_id"
     if [[ $# -gt 0 ]]; then
@@ -375,7 +381,7 @@ _cmd_group() {
     local new_group="$2"
     
     if [[ "$task_id" == "help" || "$task_id" == "-h" ]]; then
-        msg_info "$MSG_HELP_GROUP_USAGE"
+        msg_help "$MSG_HELP_GROUP_USAGE"
         return
     fi
 
@@ -406,7 +412,7 @@ _cmd_status() {
     if [[ -n "$1" && "$1" != -* && "$1" != "help" ]]; then
         [[ -f "$TASKS_DIR/$1" ]] && { target_task="$1"; shift; }
     fi
-    [[ "$1" == "help" || "$1" == "-h" ]] && { msg_info "$MSG_HELP_STATUS_USAGE"; return; }
+    [[ "$1" == "help" || "$1" == "-h" ]] && { msg_help "$MSG_HELP_STATUS_USAGE"; return; }
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --sort|-s) sort_key="$2"; shift 2 ;; 
@@ -444,9 +450,14 @@ _cmd_status() {
         for task_file in "${tasks[@]}"; do [[ $(basename "$task_file") == .* ]] && continue; basename "$task_file"; done
         return
     fi
-    [ "$daemon_active" = "true" ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
-    if [ ! -t 1 ] && [ -z "$target_task" ]; then echo "$MSG_TASK_LIST_HEADER"; fi
-    echo ""
+    if [[ -z "$QUIET_MODE" && "$GLOBAL_QUIET" != "on" ]]; then
+            if [[ -z "$QUIET_MODE" && "$GLOBAL_QUIET" != "on" ]]; then
+                [ "$daemon_active" = "true" ] && msg_success "● Daemon: Active (PID: $(cat "$PID_FILE"))" || msg_error "● Daemon: Inactive"
+                if [ ! -t 1 ] && [ -z "$target_task" ]; then echo "$MSG_TASK_LIST_HEADER"; fi
+                echo ""
+            fi
+        
+    fi
     [[ ${#tasks[@]} -eq 0 ]] && { echo " (No tasks found)"; return; }
     for task_file in "${tasks[@]}"; do
         [[ $(basename "$task_file") == .* ]] && continue
@@ -481,7 +492,7 @@ _cmd_status() {
 _cmd_in() {
     local time_str="$1"; shift; local msg="$*"
     if [[ -z "$time_str" || "$time_str" == "help" || "$time_str" == "-h" ]]; then
-        msg_info "$MSG_HELP_IN_USAGE"
+        msg_help "$MSG_HELP_IN_USAGE"
         return 0
     fi
     local interval=$(_parse_duration "$time_str") || return 1
@@ -594,33 +605,34 @@ EOF
         quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;; 
         root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;; 
         language) LANGUAGE="$1"; _save_global_config; msg_success "Language set to: $LANGUAGE" ;; 
-        help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;; 
+        help|*) msg_help "$MSG_HELP_DAEMON_HEADER"; msg_help "$MSG_HELP_DAEMON_CMDS" ;; 
     esac
 }
 _cmd_version() { echo "eye version $EYE_VERSION"; }
 
 _cmd_usage() {
-    echo "$MSG_USAGE_HEADER"
+    # Use msg_help for usage to bypass quiet mode
+    msg_help "$MSG_USAGE_HEADER"
     echo ""
-    echo "$MSG_USAGE_CORE"
-    echo "$MSG_USAGE_CMD_START"
-    echo "$MSG_USAGE_CMD_STOP"
-    echo "$MSG_USAGE_CMD_RESUME"
-    echo "$MSG_USAGE_CMD_NOW"
-    echo "$MSG_USAGE_CMD_RESET"
-    echo "$MSG_USAGE_CMD_TIME"
-    echo "$MSG_USAGE_CMD_COUNT"
+    msg_help "$MSG_USAGE_CORE"
+    msg_help "$MSG_USAGE_CMD_START"
+    msg_help "$MSG_USAGE_CMD_STOP"
+    msg_help "$MSG_USAGE_CMD_RESUME"
+    msg_help "$MSG_USAGE_CMD_NOW"
+    msg_help "$MSG_USAGE_CMD_RESET"
+    msg_help "$MSG_USAGE_CMD_TIME"
+    msg_help "$MSG_USAGE_CMD_COUNT"
     echo ""
-    echo "$MSG_USAGE_MANAGE"
-    echo "$MSG_USAGE_CMD_ADD"
-    echo "$MSG_USAGE_CMD_IN"
-    echo "$MSG_USAGE_CMD_RM"
-    echo "$MSG_USAGE_CMD_GROUP"
-    echo "$MSG_USAGE_CMD_EDIT"
-    echo "$MSG_USAGE_CMD_LIST"
-    echo "$MSG_USAGE_CMD_STATUS"
+    msg_help "$MSG_USAGE_MANAGE"
+    msg_help "$MSG_USAGE_CMD_ADD"
+    msg_help "$MSG_USAGE_CMD_IN"
+    msg_help "$MSG_USAGE_CMD_RM"
+    msg_help "$MSG_USAGE_CMD_GROUP"
+    msg_help "$MSG_USAGE_CMD_EDIT"
+    msg_help "$MSG_USAGE_CMD_LIST"
+    msg_help "$MSG_USAGE_CMD_STATUS"
     echo ""
-    echo "$MSG_USAGE_SUB"
-    echo "$MSG_USAGE_CMD_DAEMON"
-    echo "$MSG_USAGE_CMD_SOUND"
+    msg_help "$MSG_USAGE_SUB"
+    msg_help "$MSG_USAGE_CMD_DAEMON"
+    msg_help "$MSG_USAGE_CMD_SOUND"
 }

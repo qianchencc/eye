@@ -34,13 +34,23 @@ _msg_stderr() {
         return
     fi
 
+    _msg_direct_stderr "$color" "$msg"
+}
+
+# Output to stderr regardless of quiet mode (used for help)
+_msg_direct_stderr() {
+    local color="$1"
+    shift
+    local msg="$*"
     if [ -t 2 ]; then
-        # TTY: Print with color
         printf "${color}%s${_C_RESET}\n" "$msg" >&2
     else
-        # Non-TTY: Print plain text
         echo "$msg" >&2
     fi
+}
+
+msg_help() {
+    _msg_direct_stderr "$_C_BOLD" "$*"
 }
 
 msg_error() {

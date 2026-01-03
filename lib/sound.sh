@@ -64,8 +64,8 @@ _cmd_sound() {
     _load_global_config
 
     if [[ -z "$subcmd" ]]; then
-        echo "$MSG_HELP_SOUND_HEADER"
-        echo -e "$MSG_HELP_SOUND_CMDS"
+        msg_help "$MSG_HELP_SOUND_HEADER"
+        msg_help "$MSG_HELP_SOUND_CMDS"
         return
     fi
 
@@ -223,8 +223,8 @@ _cmd_sound() {
             fi
             ;; 
         help)
-            echo "$MSG_HELP_SOUND_HEADER"
-            echo -e "$MSG_HELP_SOUND_CMDS"
+            msg_help "$MSG_HELP_SOUND_HEADER"
+            msg_help "$MSG_HELP_SOUND_CMDS"
             ;;
         *)
             echo "$MSG_SOUND_USAGE" ;; 
