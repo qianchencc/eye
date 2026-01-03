@@ -63,6 +63,12 @@ _cmd_sound() {
     shift
     _load_global_config
 
+    if [[ -z "$subcmd" ]]; then
+        echo "$MSG_HELP_SOUND_HEADER"
+        echo -e "$MSG_HELP_SOUND_CMDS"
+        return
+    fi
+
     case "$subcmd" in
         list)
             # Headers to stderr

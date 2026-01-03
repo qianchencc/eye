@@ -68,6 +68,16 @@ _apply_to_tasks() {
 _cb_set_status() {
     local id="$1"
     local new_status="$2"
+    
+    if [[ "$new_status" == "paused" && "$STATUS" != "paused" ]]; then
+        PAUSE_TS=$(date +%s)
+    elif [[ "$new_status" == "running" && "$STATUS" == "paused" ]]; then
+        local now=$(date +%s)
+        local diff=$((now - ${PAUSE_TS:-$now}))
+        LAST_RUN=$((LAST_RUN + diff))
+        PAUSE_TS=0
+    fi
+    
     STATUS="$new_status"
     msg_info "Task $id -> $new_status"
 }
@@ -98,6 +108,10 @@ _cb_time_shift() {
 _cb_count_shift() {
     local id="$1"
     local delta="$2"
+    if [[ "$TARGET_COUNT" -eq -1 ]]; then
+        msg_error "$(printf "$MSG_ERROR_INFINITE_COUNT" "$id")"
+        return
+    fi
     REMAIN_COUNT=$((REMAIN_COUNT + delta))
     msg_success "Task $id count shifted by $delta (Now: $REMAIN_COUNT)"
 }
@@ -126,26 +140,51 @@ _cb_reset() {
 
 _cmd_start() {
     local target="${1:-@$(_get_default_target)}"
+    if [[ "$target" == "help" || "$target" == "-h" ]]; then
+        msg_info "$MSG_USAGE_CMD_START"
+        return
+    fi
     _apply_to_tasks "$target" _cb_set_status "running"
+    _apply_to_tasks "$target" _cb_reset "true" "false"
 }
 
 _cmd_stop() {
-    local target="${1:-@$(_get_default_target)}"
-    _apply_to_tasks "$target" _cb_set_status "stopped"
-}
-
-_cmd_pause() {
     local target="$1"
+    local duration=""
+    
+    if [[ "$target" == "help" || "$target" == "-h" ]]; then
+        msg_info "$MSG_HELP_STOP_USAGE"
+        return
+    fi
+
     if [[ "$target" == "--all" || "$target" == "-a" ]]; then
         target="--all"
+        duration="$2"
     elif [[ -z "$target" ]]; then
         target="@$(_get_default_target)"
+    else
+        # check if 2nd arg is duration
+        if [[ -n "$2" ]]; then
+            duration="$2"
+        fi
     fi
+
     _apply_to_tasks "$target" _cb_set_status "paused"
+    
+    if [[ -n "$duration" ]]; then
+        local seconds=$(_parse_duration "$duration")
+        if [ $? -eq 0 ]; then
+            msg_info "Tasks paused for $duration."
+        fi
+    fi
 }
 
 _cmd_resume() {
     local target="$1"
+    if [[ "$target" == "help" || "$target" == "-h" ]]; then
+        msg_info "$MSG_USAGE_CMD_RESUME"
+        return
+    fi
     if [[ "$target" == "--all" || "$target" == "-a" ]]; then
         target="--all"
     elif [[ -z "$target" ]]; then
@@ -156,6 +195,10 @@ _cmd_resume() {
 
 _cmd_now() {
     local task_id="$1"
+    if [[ "$task_id" == "help" || "$task_id" == "-h" ]]; then
+        msg_info "$MSG_USAGE_CMD_NOW"
+        return
+    fi
     if [[ -z "$task_id" ]]; then
         local def=$(_get_default_target)
         if [[ -f "$TASKS_DIR/$def" ]]; then
@@ -172,7 +215,7 @@ _cmd_now() {
 _cmd_time() {
     local delta="$1"
     local target="${2:-@$(_get_default_target)}"
-    if [[ -z "$delta" || "$delta" == "--help" || "$delta" == "-h" ]]; then
+    if [[ -z "$delta" || "$delta" == "help" || "$delta" == "-h" ]]; then
         msg_info "Usage: eye time <delta> [task_id|@group|--all]"
         return 0
     fi
@@ -182,7 +225,7 @@ _cmd_time() {
 _cmd_count() {
     local delta="$1"
     local target="${2:-@$(_get_default_target)}"
-    if [[ -z "$delta" || "$delta" == "--help" || "$delta" == "-h" ]]; then
+    if [[ -z "$delta" || "$delta" == "help" || "$delta" == "-h" ]]; then
         msg_info "Usage: eye count <delta> [task_id|@group|--all]"
         return 0
     fi
@@ -193,7 +236,7 @@ _cmd_reset() {
     local target=""
     local do_time=false
     local do_count=false
-    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    if [[ "$1" == "help" || "$1" == "-h" ]]; then
         msg_info "Usage: eye reset [target] --time --count"
         return 0
     fi
@@ -212,27 +255,8 @@ _cmd_reset() {
 _cmd_add() {
     local task_id="$1"
     shift
-    if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
-        msg_info "Usage: eye add <name> [options]"
-        msg_data ""
-        msg_data "Core Options:"
-        msg_data "  -i, --interval <time>  Interval (e.g. 20m, 1h)"
-        msg_data "  -d, --duration <time>  Duration (e.g. 20s, 0s for Pulse)"
-        msg_data "  -g, --group <name>     Group name (default: default)"
-        msg_data "  -c, --count <int>      Loop count (-1 for infinite)"
-        msg_data "  --temp                 Delete task after completion"
-        msg_data ""
-        msg_data "Content Options:"
-        msg_data "  --sound-start <tag>    Sound to play at start"
-        msg_data "  --sound-end <tag>      Sound to play at end (if duration > 0)"
-        msg_data "  --msg-start <text>     Notification text at start"
-        msg_data "  --msg-end <text>       Notification text at end"
-        msg_data ""
-        msg_data "Variables for messages (styles: {VAR} or \${VAR}):"
-        msg_data "  {DURATION}             Formatted duration (e.g., 20s)"
-        msg_data "  {INTERVAL}             Formatted interval"
-        msg_data "  {NAME}                 Task name"
-        msg_data "  {REMAIN_COUNT}         Remaining loop count"
+    if [[ -z "$task_id" || "$task_id" == "help" || "$task_id" == "-h" ]]; then
+        msg_info "$MSG_HELP_ADD_USAGE"
         return 0
     fi
     local task_file="$TASKS_DIR/$task_id"
@@ -323,8 +347,8 @@ _cmd_add() {
 _cmd_edit() {
     local task_id="$1"
     shift
-    if [[ -z "$task_id" || "$task_id" == "--help" || "$task_id" == "-h" ]]; then
-        msg_info "Usage: eye edit <task_id> [options]"; return 1
+    if [[ -z "$task_id" || "$task_id" == "help" || "$task_id" == "-h" ]]; then
+        msg_info "$MSG_HELP_EDIT_USAGE"; return 0
     fi
     local task_file="$TASKS_DIR/$task_id"
     if [[ ! -f "$task_file" ]]; then msg_error "$(printf "$MSG_TASK_NOT_FOUND" "$task_id")"; return 1; fi
@@ -338,6 +362,8 @@ _cmd_edit() {
                 -c|--count)    TARGET_COUNT="$2"; REMAIN_COUNT="$2"; shift 2 ;; 
                 --temp)        IS_TEMP="true"; shift ;; 
                 --no-temp)     IS_TEMP="false"; shift ;; 
+                --sound-on)    SOUND_ENABLE="true"; shift ;;
+                --sound-off)   SOUND_ENABLE="false"; shift ;;
                 --sound-start) SOUND_START="$2"; shift 2 ;; 
                 --sound-end)   SOUND_END="$2"; shift 2 ;; 
                 --msg-start)   MSG_START="$2"; shift 2 ;; 
@@ -348,7 +374,7 @@ _cmd_edit() {
         _save_task "$task_id"
         msg_success "Task updated."
     else
-        msg_info "Editing '$task_id'வைக்..."
+        msg_info "Editing '$task_id'..."
         local interval_fmt=$(_format_duration "$INTERVAL")
         local duration_fmt=$(_format_duration "$DURATION")
         local tmp_val
@@ -359,6 +385,13 @@ _cmd_edit() {
         _ask_val "Group" "$GROUP" GROUP
         _ask_val "$MSG_WIZARD_COUNT" "$TARGET_COUNT" TARGET_COUNT
         [[ "$TARGET_COUNT" -gt 0 ]] && REMAIN_COUNT="$TARGET_COUNT" || REMAIN_COUNT="-1"
+        
+        _ask_bool "Enable Sound" "$( [ "$SOUND_ENABLE" == "true" ] && echo "y" || echo "n" )" SOUND_ENABLE
+        _ask_val "Sound Start" "$SOUND_START" SOUND_START
+        _ask_val "Sound End" "$SOUND_END" SOUND_END
+        _ask_val "Message Start" "$MSG_START" MSG_START
+        _ask_val "Message End" "$MSG_END" MSG_END
+
         if _save_task "$task_id"; then msg_success "Task updated."; fi
     fi
 }
@@ -380,6 +413,10 @@ _cmd_status() {
     
     # 1. Positional arg check (is it a task?)
     if [[ -n "$1" && "$1" != -* ]]; then
+        if [[ "$1" == "help" || "$1" == "-h" ]]; then
+            msg_info "$MSG_HELP_STATUS_USAGE"
+            return
+        fi
         if [ -f "$TASKS_DIR/$1" ]; then
             target_task="$1"
             shift
@@ -421,35 +458,30 @@ _cmd_status() {
         [ "${LAST_TRIGGER_AT:-0}" -gt 0 ] && trigger_fmt=$(date -d "@$LAST_TRIGGER_AT" "+%Y-%m-%d %H:%M:%S")
         
         # Calculate Next Run
-        local next_val=0
-        if [[ "$STATUS" == "running" ]]; then
-            next_val=$((INTERVAL - (ref_time - LAST_RUN)))
-            [[ $next_val -lt 0 ]] && next_val=0
-        fi
+        local effective_ref=$ref_time
+        [[ "$STATUS" == "paused" ]] && effective_ref=${PAUSE_TS:-$ref_time}
+        local next_val=$((INTERVAL - (effective_ref - LAST_RUN)))
+        [[ $next_val -lt 0 ]] && next_val=0
         local next_run_fmt=$(_format_duration $next_val)
 
         local labels=("ID" "GROUP" "INTERVAL" "DURATION" "COUNT" "TEMP" "SOUND" "S-START" "S-END" "MSG-S" "MSG-E" "STATUS" "NEXT" "CREATED" "L-TRIGGER")
         local values=("$target_task" "$GROUP" "$(_format_duration $INTERVAL)" "$(_format_duration $DURATION)" "$REMAIN_COUNT/$TARGET_COUNT" "$IS_TEMP" "$SOUND_ENABLE" "$SOUND_START" "$SOUND_END" "${MSG_START:-None}" "${MSG_END:-None}" "${STATUS^}" "$next_run_fmt" "$created_fmt" "$trigger_fmt")
         
-        # Use column -t with a dummy third column to force padding of the value column
         local detail_rows=()
         for i in "${!labels[@]}"; do
-            detail_rows+=("${labels[$i]}|${values[$i]}|.")
+            detail_rows+=("${labels[$i]}@${values[$i]}@.")
         done
         
-        # Format and then strip the dummy column '.'
         local tmp_v=$(mktemp)
-        printf "%s\n" "${detail_rows[@]}" | column -t -s '|' -o ' │ ' | sed 's/ │ .$//' > "$tmp_v"
+        printf "%s\n" "${detail_rows[@]}" | column -t -s '@' -o ' │ ' | sed 's/ │ \.$//' > "$tmp_v"
         
-        # Generate borders by transforming a data line
-        local top_border=$(head -n1 "$tmp_v" | sed 's/[^│]/─/g; s/│/┬/g; s/^/┌─/; s/$/─┐/')
-        local bot_border=$(head -n1 "$tmp_v" | sed 's/[^│]/─/g; s/│/┴/g; s/^/└─/; s/$/─┘/')
-        
-        echo "$top_border"
+        local v_width=$(head -n1 "$tmp_v" | wc -L)
+        local h_line=$(printf '─%.0s' $(seq 1 $((v_width + 2))))
+        echo "┌${h_line}┐"
         while IFS= read -r line; do
             echo "│ ${line} │"
         done < "$tmp_v"
-        echo "$bot_border"
+        echo "└${h_line}┘"
         
         rm -f "$tmp_v"
         return
@@ -472,11 +504,12 @@ _cmd_status() {
             local next_run="-" sort_val="" diff_sec=999999999
             local status_text="${STATUS^}"
 
-            if [[ "$STATUS" == "running" ]]; then
-                diff_sec=$((INTERVAL - (ref_time - LAST_RUN)))
-                [[ $diff_sec -lt 0 ]] && diff_sec=0
-                next_run=$(_format_duration $diff_sec)
-            fi
+            local effective_ref=$ref_time
+            [[ "$STATUS" == "paused" ]] && effective_ref=${PAUSE_TS:-$ref_time}
+            
+            diff_sec=$((INTERVAL - (effective_ref - LAST_RUN)))
+            [[ $diff_sec -lt 0 ]] && diff_sec=0
+            next_run=$(_format_duration $diff_sec)
             
             local name_display="$tid"
             [[ "$IS_TEMP" == "true" ]] && name_display="[T]$tid"
@@ -498,10 +531,10 @@ _cmd_status() {
             
             if [ "$long_format" = true ]; then
                 # Boxed: ID | Group | Interval | Dur | Count | Status | Next
-                rows+=("$sort_val|$name_display|$GROUP|$(_format_duration $INTERVAL)|$dur_fmt|$count_fmt|$status_text|$next_run")
+                rows+=("$sort_val@$name_display@$GROUP@$(_format_duration $INTERVAL)@$dur_fmt@$count_fmt@$status_text@$next_run")
             else
                 # Aligned Compact: Status ID Timing Count Next Group
-                rows+=("$sort_val|$status_text|$name_display|$time_comb|$count_fmt|$next_run|$GROUP")
+                rows+=("$sort_val@$status_text@$name_display@$time_comb@$count_fmt@$next_run@$GROUP")
             fi
         fi
     done
@@ -509,33 +542,39 @@ _cmd_status() {
     # Sort
     local sorted_data
     if [ "$reverse" = true ]; then
-        sorted_data=$(printf "%s\n" "${rows[@]}" | sort -rV | cut -d'|' -f2-)
+        sorted_data=$(printf "%s\n" "${rows[@]}" | sort -rV | cut -d'@' -f2-)
     else
-        sorted_data=$(printf "%s\n" "${rows[@]}" | sort -V | cut -d'|' -f2-)
+        sorted_data=$(printf "%s\n" "${rows[@]}" | sort -V | cut -d'@' -f2-)
     fi
 
     if [ "$long_format" = true ]; then
         # Horizontal Boxed Table
-        local long_header="$MSG_TASK_ID|$MSG_TASK_GROUP|$MSG_TASK_INTERVAL|$MSG_TASK_DURATION|$MSG_TASK_COUNT|$MSG_TASK_STATUS|NEXT"
+        local long_header="$MSG_TASK_ID@$MSG_TASK_GROUP@$MSG_TASK_INTERVAL@$MSG_TASK_DURATION@$MSG_TASK_COUNT@$MSG_TASK_STATUS@NEXT@."
         local tmp_f=$(mktemp)
-        { echo "$long_header"; echo "$sorted_data"; } > "$tmp_f"
-        # Using placeholder '.' to prevent column from trimming last column padding
-        local table_content=$(sed 's/$/|./' "$tmp_f" | column -t -s '|' -o ' | ' | sed 's/ | .//')
+        echo "$long_header" > "$tmp_f"
+        while IFS= read -r row; do
+            echo "$row@." >> "$tmp_f"
+        done <<< "$sorted_data"
+        
+        local table_content=$(column -t -s '@' -o ' │ ' "$tmp_f" | sed 's/ │ \.$//')
         rm -f "$tmp_f"
         
         local v_width=$(echo "$table_content" | head -n1 | wc -L)
-        local h_line=$(printf "%${v_width}s" "" | tr ' ' '-')
-        echo "+--${h_line}--+"
+        local h_line=$(printf '─%.0s' $(seq 1 $((v_width + 2))))
+        echo "┌${h_line}┐"
         local i=0
         while IFS= read -r line; do
-            printf "|  %-${v_width}s  |\n" "$line"
-            [[ $i -eq 0 ]] && echo "+--${h_line}--+"
+            printf "│ %-${v_width}s │\n" "$line"
+            if [ $i -eq 0 ]; then
+                local sep_line=$(printf '─%.0s' $(seq 1 $((v_width + 2))))
+                echo "├${sep_line}┤"
+            fi
             ((i++))
         done <<< "$table_content"
-        echo "+--${h_line}--+"
+        echo "└${h_line}┘"
     else
         # Default Compact: Status  ID  Timing  Count  Next  Group
-        printf "%s\n" "$sorted_data" | column -t -s '|' -o '  '
+        printf "%s\n" "$sorted_data" | column -t -s '@' -o '  '
     fi
 }
 
@@ -621,7 +660,6 @@ _cmd_usage() {
     echo "$MSG_USAGE_CORE"
     echo "$MSG_USAGE_CMD_START"
     echo "$MSG_USAGE_CMD_STOP"
-    echo "$MSG_USAGE_CMD_PAUSE"
     echo "$MSG_USAGE_CMD_RESUME"
     echo "$MSG_USAGE_CMD_NOW"
     echo "$MSG_USAGE_CMD_RESET"

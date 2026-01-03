@@ -14,83 +14,58 @@
     * 有参数：将目标任务状态设为 `running`，并更新 `LAST_RUN` 为当前时间。
 
 
-* **`stop [target]`**
-* **Usage**: `eye stop task1`, `eye stop @work`
-* **描述**: 将目标任务状态设为 `stopped`。
-
-
-* **`pause [target]`**
-* **Usage**: `eye pause`, `eye pause @all`
-* **描述**: 将任务设为 `paused` 并记录暂停时间戳。
-* **参数**: `--all` (暂停所有正在运行的任务)。
+* **`stop [target] [time]`**
+* **Usage**: `eye stop task1`, `eye stop @work 1h`
+* **描述**: 暂停目标任务。
+    * 无 `[time]`: 无期限暂停。
+    * 有 `[time]`: 暂停指定时长（如 `30m`, `1h`）。
+    * **特性**: 暂停期间 `NEXT` 触发时间保持静止，不会随时间流逝而减少。
 
 
 * **`resume [target]`**
 * **Usage**: `eye resume`, `eye resume @work`
-* **描述**: 恢复运行，根据暂停时长自动补齐下次触发时间。
+* **描述**: 恢复运行，根据暂停时长自动补偿 `LAST_RUN` 时间戳，使任务从暂停点继续。
 
 
 
 ### 1.2 状态查询 (Status)
 
 **别名**: `list`
-**改进**: 增加了强大的排序和过滤参数，优化了长名称显示。
+**改进**: 增加了强大的排序和过滤参数，优化了对齐逻辑与详细视图。
 
 * **`status [target] [options]`**
 * **Usage**: `eye status`, `eye list`, `eye status -l`, `eye status eye_rest`
-* **描述**: 显示守护进程状态及任务列表。
+* **描述**: 显示守护进程状态及任务列表。支持通过 `eye status help` 查看详细用法。
 * **视图模式**:
-    * **默认 (Compact)**: `Status  ID  Timing  Count  NEXT  Group` (整齐流式对齐)。
-    * **详细 (--long, -l)**: 带有 ASCII 边框的横向看板。
-    * **单任务详情 (<task_id>)**: 纵向键值对看板，展示所有配置及新增的时间戳字段。
+    * **默认 (Compact)**: `Status  ID  Timing  Count  NEXT  Group` (完美对齐)。
+    * **详细 (--long, -l)**: 带有 ASCII 边框的横向表格，移除了冗余列。
+    * **单任务详情 (<task_id>)**: 纵向对齐的键值对看板，展示所有元数据及配置。
 * **参数**:
     * `--long, -l`: 显示横向详细表格。
-    * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
-    * `--reverse, -r`: 倒序排列。
-* **字段说明 (新增)**:
-    * `CREATED`: 任务创建时间。
-    * `L-TRIGGER`: 上一次成功运行时间。
-* **参数**:
     * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
     * `--reverse, -r`: 倒序排列。
 
 
 ### 1.3 任务增删改 (CRUD)
 
-**改进**: 增强了 `add` 的交互性与脚本化支持，支持一步配置所有任务属性。
+**改进**: 增强了 `add` 与 `edit` 的功能，支持完整的音效与通知配置。
 
 * **`add <name> [options]`**
-* **Usage**: `eye add water -i 1h --sound-start bell`, `eye add task1 --help`
-* **描述**: 创建新任务。
-* **核心参数**:
-    * `--interval, -i <time>`: 间隔 (如 `20m`, `1h`)。[必填] (除非进入交互模式)。
-    * `--duration, -d <time>`: 持续时间 (默认 `0`)。
-    * `--group, -g <name>`: 组名 (默认 `default`)。
-    * `--count, -c <int>`: 计数限制 (默认 `-1` 无限)。
-    * `--temp`: 标记为临时任务 (计数归零后删除)。
-* **内容参数 (新增)**:
-    * `--sound-start <tag/path>`: 设置开始音效.
-    * `--sound-end <tag/path>`: 设置结束音效 (仅当 `duration>0` 时有效)。
-    * `--msg-start "text"`: 设置开始通知文案。支持变量：`${VAR}` 或 `{VAR}` 风格。
-    * 变量说明：`{REMAIN_COUNT}` 显示包含当前触发在内的剩余次数（更加准确）。
-    * 支持变量：`DURATION`, `INTERVAL`, `NAME`, `REMAIN_COUNT`。
-    * `--msg-end "text"`: 设置结束通知文案。
-* **特殊行为**:
-    * `--help`: 显示该命令的详细参数说明及示例，而不进行创建操作。
-    * `--edit, -e`: **[Unix特性]** 创建后立即调用 `$EDITOR` 打开文件进行微调.
-    * *(无参数): 进入交互式问答向导 (Wizard Mode)。*
-        * **改进**: 交互过程中会列出可用音效标签。
-        * **改进**: 编辑通知文案时提供可用变量提示（支持 `{VAR}` 和 `${VAR}` 风格）。
+* **Usage**: `eye add water -i 1h --sound-start bell`, `eye add task1 help`
+* **描述**: 创建新任务。支持通过 `eye add help` 查看所有可用参数。
+* **交互模式**: 不带参数时进入交互向导，提供音效列表与变量提示。
+
+
+* **`edit <target> [options]`**
+* **Usage**: `eye edit water -i 45m`, `eye edit vision --sound-off`
+* **描述**: 修改任务配置。支持通过 `eye edit help` 查看参数。
+    * **新增选项**: `--sound-on/off` 快速开关音效。
+    * **交互模式**: 不带参数时进入交互式编辑，涵盖所有配置项（含音效与文案）。
 
 
 * **`in <time> <message>`**
 * **Usage**: `eye in 30m "Take a nap"`
-* **描述**: 快速创建一次性临时任务 (Shortcut for `add --temp ...`)。
-
-
-* **`edit <target>`**
-* **Usage**: `eye edit water`
-* **描述**: 修改任务。自动调用 `$EDITOR` 编辑对应的任务文件。
+* **描述**: 快速创建一次性临时任务。
 
 
 * **`rm <target>`**
@@ -100,125 +75,44 @@
 
 ### 1.4 状态操纵 (Manipulation)
 
-用于手动干预计时器和计数器。
-
 * **`time <delta> [target]`**
 * **Usage**: `eye time +10m @work`, `eye time -5m water`
-* **描述**: 修改任务的 `LAST_RUN` 时间戳。
-* **参数**:
-    * `<delta>`: 时间增量，必须带符号 (如 `+10m`, `-1h`)。
-    * `[target]`: 默认为默认任务。
+* **描述**: 修改任务的 `LAST_RUN` 时间戳以快进或延后。
 
 
 * **`count <delta> [target]`**
 * **Usage**: `eye count -1 water`
 * **描述**: 修改任务的 `REMAIN_COUNT`。
-* **逻辑**:
-    * 若任务是无限循环 (`TARGET_COUNT = -1`)，此命令仅返回警告但不生效。
-    * 若修改导致 `REMAIN_COUNT <= 0`，自动触发任务结束逻辑 (Stop or Delete)。
+* **限制**: 不允许修改 `TARGET_COUNT = -1` (无限循环) 的任务计数。
 
 
 * **`reset [target] [options]`**
 * **Usage**: `eye reset @work --timer`
-* **描述**: 重置任务状态。直接运行 `reset` 会显示帮助。
-* **参数**:
-    * `--timer, -t`: 重置计时器 (`LAST_RUN = now`)。
-    * `--counter, -c`: 重置计数器 (`REMAIN = TARGET`)。
-    * `--all，-a`: 重置计时器和计数器。
+* **描述**: 重置任务的计时器或计数器。
 
 
-### 1.5 组管理 (Group)
+### 1.5 帮助系统 (New)
 
-* **`group <target> <new_group>`**
-* **Usage**: `eye group task1 @office`
-* **描述**: 将任务移动到新组。若 `<new_group>` 为 `none` 或 `default`，则移出当前组。
-
-
-### 1.6 其他
-
-* **`help`**: 显示帮助。
-* **`version`**: 显示版本。
+每个核心命令都内置了详细帮助：
+* `eye add help`
+* `eye edit help`
+* `eye status help`
+* `eye stop help`
 
 ---
 
 ## 2. 音频指令集 (Sound Commands)
 
-**前缀**: `eye sound`
-**描述**: 管理音效资源及播放策略。
-
-* **`list`**: 列出所有可用音效 Tag 及路径。
+* **`eye sound`**: 直接运行显示帮助。
+* **`list`**: 列出所有可用音效 Tag。
 * **`play <tag>`**: 试听音效。
-* **`add <tag> <path>`**: 注册自定义音效。
-* **`rm <tag>`**: 移除自定义音效。
-* **`on [target]`**
-* **Usage**: `eye sound on`, `eye sound on water`
-* **描述**:
-    * 无参数：**全局解除静音**。恢复对各个任务音频配置的尊重。
-    * 有参数：开启指定任务/组的 `SOUND_ENABLE` 开关。
-
-
-* **`off [target]`**
-* **Usage**: `eye sound off`, `eye sound off @meeting`
-* **描述**:
-    * 无参数：**全局静音 (Master Mute)**。覆盖所有任务设置，强制静音。
-    * 有参数：关闭指定任务/组的 `SOUND_ENABLE` 开关。
-
-
+* **`on/off [target]`**: 全局或针对特定任务开关音效。
 
 ---
 
 ## 3. 守护进程与配置 (Daemon & Config)
 
-**前缀**: `eye daemon`
-**描述**: 管理后台服务、持久化及全局偏好。所有 set 类命令都会写入 `eye.conf`。
-
-### 3.1 服务管理
-
-* **`up`**: 启动守护进程。**注意**：安装后默认不启动，用户必须手动执行 `eye daemon up` 才能开启任务调度。
-* **`down`**: 停止守护进程。
-* **`reload`**: 强制重载所有配置文件。
-* **`enable`**: 注册并开启开机自启 (Systemd)。
-* **`disable`**: 取消开机自启。
-
-### 3.2 全局偏好设置 (Preferences)
-
-* **`quiet <on|off>`**
-* **描述**: 开启后，将 Standard Error (Stderr) 重定向至 `/dev/null`。
-* **作用**: 实现绝对的静默运行（适合 Crontab 或极简主义者）。
-
-
-* **`root-cmd <help|status>`**
-* **描述**: 设置当用户仅输入 `eye` 时的默认行为。
-
-
-* **`default <task_id>`**
-* **描述**: 设置默认操作的任务 ID (用于 `pause` 等不带参数时的行为)。
-
-
-* **`language <zh|en>`**
-* **描述**: 设置 CLI 交互语言。
-
-
-
----
-
-## 设计补充说明
-
-1. **参数位置的灵活性**：
-在实现参数解析（`getopts` 或手动解析）时，建议支持参数位置的灵活性。
-例如 `eye status @work --sort name` 和 `eye status --sort name @work` 应当等效。
-2. **默认行为的智能回退**：
-对于 `stop`, `pause`, `resume` 等命令，如果用户未指定 `target`：
-    1. 检查 `eye.conf` 中的 `DEFAULT_TASK`。
-    2. 如果未设置，则默认操作名为 `default` 的组或任务。
-    3. 如果都不存在，报错并提示用户指定。
-
-
-3. **排序实现提示**：
-在 Bash 中实现 `status` 的排序，可以将所有任务数据读入数组，格式化为 `timestamp|name|group|...` 的行，然后通过 `sort` 命令管道处理：
-```bash
-# 伪代码示例：按时间倒序
-... | sort -t'|' -k1 -rn
-```
-
-此外，除了根指令，所有二级指令都要有自己的完整help.
+* **`eye daemon up/down`**: 启动/停止服务。
+* **`eye daemon default <id>`**: 设置默认操作目标。
+* **`eye daemon quiet <on/off>`**: 静默模式。
+* **`eye daemon language <zh/en>`**: 切换语言。

@@ -21,10 +21,9 @@ _init_messages() {
         # --- Chinese (Simplified) ---
         MSG_USAGE_HEADER="用法: eye <command> [args]"
         MSG_USAGE_CORE="任务控制 (支持 @group, --all):"
-        MSG_USAGE_CMD_START="  start [target]   启动/恢复任务 (默认: @default)"
-        MSG_USAGE_CMD_STOP="  stop [target]    停止任务"
-        MSG_USAGE_CMD_PAUSE="  pause [target]   暂停任务"
-        MSG_USAGE_CMD_RESUME="  resume [target]  恢复任务"
+        MSG_USAGE_CMD_START="  start [target]   启动任务 (更新 LAST_RUN 为当前时间)"
+        MSG_USAGE_CMD_STOP="  stop [target]    停止/暂停任务 (不重置计时器)"
+        MSG_USAGE_CMD_RESUME="  resume [target]  恢复运行 (根据暂停时长补齐时间)"
         MSG_USAGE_CMD_NOW="  now [task]       立即触发一次任务"
         MSG_USAGE_CMD_RESET="  reset [target]   重置任务 (需配合 --time/--count)"
         MSG_USAGE_CMD_TIME="  time <delta>     快进/快退计时 (如: +10m, -5s)"
@@ -43,13 +42,95 @@ _init_messages() {
 
         # Help Messages
         MSG_HELP_DAEMON_HEADER="用法: eye daemon <command>"
-        MSG_HELP_DAEMON_CMDS="命令:\n  up             启动守护进程\n  down           停止守护进程\n  enable         开启开机自启 (Systemd)\n  disable        关闭开机自启\n  default <task> 设置默认任务目标\n  quiet <on|off> 静默模式\n  language <zh|en> 语言设置\n  root-cmd <cmd> 设置根指令行为\n  help           显示此帮助"
+        MSG_HELP_DAEMON_CMDS="命令:
+  up             启动守护进程
+  down           停止守护进程
+  enable         开启开机自启 (Systemd)
+  disable        关闭开机自启
+  default <task> 设置默认任务目标
+  quiet <on|off> 静默模式
+  language <zh|en> 语言设置
+  root-cmd <cmd> 设置根指令行为
+  help           显示此帮助"
         
         MSG_HELP_SOUND_HEADER="用法: eye sound <command>"
-        MSG_HELP_SOUND_CMDS="命令:\n  list           列出可用音效\n  play <tag>     试听\n  add <tag> <path> 添加自定义\n  rm <tag>       删除自定义\n  on [task]      全局开启 (或开启特定任务)\n  off [task]     全局强制静音 (或关闭特定任务)\n  help           显示此帮助"
+        MSG_HELP_SOUND_CMDS="命令:
+  list           列出可用音效
+  play <tag>     试听
+  add <tag> <path> 添加自定义
+  rm <tag>       删除自定义
+  on [task]      全局开启 (或开启特定任务)
+  off [task]     全局强制静音 (或关闭特定任务)
+  help           显示此帮助"
         
-        MSG_HELP_ADD_USAGE="用法: eye add <name> [options]\n选项:\n  -i, --interval <time>  间隔\n  -d, --duration <time>  时长\n  -g, --group <name>     分组"
+        MSG_HELP_ADD_USAGE="用法: eye add <name> [options]
+
+描述: 创建一个新的定期或脉冲任务。如果不带参数，将进入交互向导。
+
+核心选项:
+  -i, --interval <time>  触发间隔 (例如: 20m, 1h)
+  -d, --duration <time>  休息时长 (例如: 20s; 0s 表示脉冲任务)
+  -g, --group <name>     分组名 (默认: default)
+  -c, --count <int>      循环次数 (-1 表示无限)
+  --temp                 标记为临时任务 (计数结束后自动删除)
+
+内容选项:
+  --sound-start <tag>    开始时的音效标签
+  --sound-end <tag>      结束时的音效标签 (仅限周期任务)
+  --msg-start <text>     开始时的通知文案
+  --msg-end <text>       结束时的通知文案
+
+示例:
+  eye add water -i 1h -g health
+  eye add vision -i 20m -d 20s --sound-start bell
+  eye add stretch --interval 30m --temp"
         
+        MSG_HELP_EDIT_USAGE="用法: eye edit <id> [options]
+
+描述: 修改现有任务的配置。如果不带参数，将进入交互式编辑。
+
+选项:
+  -i, --interval <time>  修改间隔
+  -d, --duration <time>  修改时长
+  -g, --group <name>     修改分组
+  -c, --count <int>      修改目标计数
+  --sound-on/off         开启/关闭任务音效
+  --sound-start <tag>    修改开始音效
+  --sound-end <tag>      修改结束音效
+  --msg-start <text>     修改开始文案
+  --msg-end <text>       修改结束文案
+
+示例:
+  eye edit water -i 45m
+  eye edit vision --sound-start alarm"
+
+        MSG_HELP_STATUS_USAGE="用法: eye status [id] [options]
+
+描述: 显示所有任务的当前状态或单个任务的详细信息。
+
+选项:
+  -l, --long             显示带有边框的详细横向表格
+  -s, --sort <field>     排序字段: name, created, next, group (默认: next)
+  -r, --reverse          倒序排列
+
+示例:
+  eye status -l
+  eye status water
+  eye status --sort name -r"
+
+        MSG_HELP_STOP_USAGE="用法: eye stop [target] [time]
+
+描述: 暂停任务的调度。与 start 不同，stop 不会重置 LAST_RUN，因此恢复后任务会继续之前的进度。
+
+参数:
+  target                 任务 ID, @组名, 或 --all (默认: @eye_rest)
+  time                   可选，暂停特定时长 (例如: 30m, 1h)。到期后自动恢复。
+
+示例:
+  eye stop water         无限期暂停 water 任务
+  eye stop @work 1h      将 work 组暂停 1 小时
+  eye stop --all         暂停所有任务"
+
         # General Messages
         MSG_TASK_CREATED="✅ 任务已创建: %s"
         MSG_TASK_REMOVED="🗑️  任务已删除: %s"
@@ -68,6 +149,7 @@ _init_messages() {
         MSG_NOTIFY_TITLE_END="休息结束"
         MSG_NOTIFY_BODY_END="眼睛休息完毕，继续工作吧。"
         MSG_ERROR_INVALID_TIME_FORMAT="错误: 时间格式无效"
+        MSG_ERROR_INFINITE_COUNT="错误: 任务 '%s' 是无限循环任务，无法修改计数。"
         
         MSG_SOUND_ON="全局音效: 开启 (尊重任务配置)"
         MSG_SOUND_OFF="全局音效: 关闭 (强制静音)"
@@ -117,10 +199,9 @@ _init_messages() {
         # --- English ---
         MSG_USAGE_HEADER="Usage: eye <command> [args]"
         MSG_USAGE_CORE="Task Control (supports @group, --all):"
-        MSG_USAGE_CMD_START="  start [target]   Start/Resume tasks (default: @default)"
-        MSG_USAGE_CMD_STOP="  stop [target]    Stop tasks"
-        MSG_USAGE_CMD_PAUSE="  pause [target]   Pause tasks"
-        MSG_USAGE_CMD_RESUME="  resume [target]  Resume tasks"
+        MSG_USAGE_CMD_START="  start [target]   Start task (Update LAST_RUN to now)"
+        MSG_USAGE_CMD_STOP="  stop [target]    Stop/Pause task (Keep timer state)"
+        MSG_USAGE_CMD_RESUME="  resume [target]  Resume task (Compensate pause time)"
         MSG_USAGE_CMD_NOW="  now [task]       Trigger task immediately"
         MSG_USAGE_CMD_RESET="  reset [target]   Reset task metrics (needs --time/--count)"
         MSG_USAGE_CMD_TIME="  time <delta>     Shift time (e.g., +10m, -5s)"
@@ -139,13 +220,95 @@ _init_messages() {
 
         # Help Messages
         MSG_HELP_DAEMON_HEADER="Usage: eye daemon <command>"
-        MSG_HELP_DAEMON_CMDS="Commands:\n  up             Start daemon\n  down           Stop daemon\n  enable         Enable autostart (Systemd)\n  disable        Disable autostart\n  default <task> Set default task target\n  quiet <on|off> Quiet mode\n  language <zh|en> Set language\n  root-cmd <cmd> Set root command action\n  help           Show this help"
+        MSG_HELP_DAEMON_CMDS="Commands:
+  up             Start daemon
+  down           Stop daemon
+  enable         Enable autostart (Systemd)
+  disable        Disable autostart
+  default <task> Set default task target
+  quiet <on|off> Quiet mode
+  language <zh|en> Set language
+  root-cmd <cmd> Set root command action
+  help           Show this help"
         
         MSG_HELP_SOUND_HEADER="Usage: eye sound <command>"
-        MSG_HELP_SOUND_CMDS="Commands:\n  list           List sounds\n  play <tag>     Preview\n  add <tag> <file> Add custom sound\n  rm <tag>       Remove custom sound\n  on [task]      Global ON (or enable task)\n  off [task]     Global Force Mute (or disable task)\n  help           Show this help"
+        MSG_HELP_SOUND_CMDS="Commands:
+  list           List sounds
+  play <tag>     Preview
+  add <tag> <file> Add custom sound
+  rm <tag>       Remove custom sound
+  on [task]      Global ON (or enable task)
+  off [task]     Global Force Mute (or disable task)
+  help           Show this help"
         
-        MSG_HELP_ADD_USAGE="Usage: eye add <name> [options]\nOptions:\n  -i, --interval <time>\n  -d, --duration <time>\n  -g, --group <name>"
+        MSG_HELP_ADD_USAGE="Usage: eye add <name> [options]
+
+Description: Create a new periodic or pulse task. Enters wizard mode if no options provided.
+
+Core Options:
+  -i, --interval <time>  Trigger interval (e.g. 20m, 1h)
+  -d, --duration <time>  Break duration (e.g. 20s; 0s for Pulse)
+  -g, --group <name>     Group name (default: default)
+  -c, --count <int>      Loop count (-1 for infinite)
+  --temp                 Delete task after completion
+
+Content Options:
+  --sound-start <tag>    Sound to play at start
+  --sound-end <tag>      Sound to play at end (periodic only)
+  --msg-start <text>     Notification text at start
+  --msg-end <text>       Notification text at end
+
+Examples:
+  eye add water -i 1h -g health
+  eye add vision -i 20m -d 20s --sound-start bell
+  eye add stretch --interval 30m --temp"
         
+        MSG_HELP_EDIT_USAGE="Usage: eye edit <id> [options]
+
+Description: Modify an existing task configuration. Enters interactive mode if no options provided.
+
+Options:
+  -i, --interval <time>  Modify interval
+  -d, --duration <time>  Modify duration
+  -g, --group <name>     Modify group
+  -c, --count <int>      Modify target count
+  --sound-on/off         Enable/Disable sound for this task
+  --sound-start <tag>    Modify start sound
+  --sound-end <tag>      Modify end sound
+  --msg-start <text>     Modify start message
+  --msg-end <text>       Modify end message
+
+Examples:
+  eye edit water -i 45m
+  eye edit vision --sound-start alarm"
+
+        MSG_HELP_STATUS_USAGE="Usage: eye status [id] [options]
+
+Description: Show current status of all tasks or detailed info of a single task.
+
+Options:
+  -l, --long             Show detailed horizontal boxed table
+  -s, --sort <field>     Sort by: name, created, next, group (default: next)
+  -r, --reverse          Sort in descending order
+
+Examples:
+  eye status -l
+  eye status water
+  eye status --sort name -r"
+
+        MSG_HELP_STOP_USAGE="Usage: eye stop [target] [time]
+
+Description: Pause task scheduling. Unlike start, stop does not reset LAST_RUN, so the task continues its progress after resuming.
+
+Arguments:
+  target                 Task ID, @group, or --all (default: @eye_rest)
+  time                   Optional, pause for a specific duration (e.g. 30m, 1h).
+
+Examples:
+  eye stop water         Pause water task indefinitely
+  eye stop @work 1h      Pause work group for 1 hour
+  eye stop --all         Pause all tasks"
+
         # General Messages
         MSG_TASK_CREATED="✅ Task created: %s"
         MSG_TASK_REMOVED="🗑️  Task removed: %s"
@@ -164,6 +327,7 @@ _init_messages() {
         MSG_NOTIFY_TITLE_END="Break Ended"
         MSG_NOTIFY_BODY_END="Eyes rested. Keep going!"
         MSG_ERROR_INVALID_TIME_FORMAT="Error: Invalid time format"
+        MSG_ERROR_INFINITE_COUNT="Error: Task '%s' is an infinite loop task, cannot modify count."
         
         MSG_SOUND_ON="Global Sound: ON (Respecting tasks)"
         MSG_SOUND_OFF="Global Sound: OFF (Forced Mute)"

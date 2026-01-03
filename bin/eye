@@ -92,7 +92,6 @@ case "$CMD" in
     in)         _cmd_in "$@" ;;
     start)      _cmd_start "$@" ;;
     stop)       _cmd_stop "$@" ;;
-    pause)      _cmd_pause "$@" ;;
     resume)     _cmd_resume "$@" ;;
     now)        _cmd_now "$@" ;;
     time)       _cmd_time "$@" ;;

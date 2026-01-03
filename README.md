@@ -40,12 +40,12 @@ eye add water -i 1h
 eye in 45m "Pizza is ready!"
 ```
 
-### 3. Manage Tasks
+### Manage Tasks
 ```bash
 eye list               # View all tasks
-eye pause @health      # Pause all health-related tasks
+eye stop @health       # Pause all health-related tasks
 eye now water          # Trigger hydration reminder immediately
-eye edit vision        # Edit the task file in $EDITOR
+eye edit vision        # Edit the task file in $EDITOR or interactively
 ```
 
 ## 🛠️ Command Reference
@@ -53,18 +53,18 @@ eye edit vision        # Edit the task file in $EDITOR
 ### Task Management
 | Command | Description |
 | :--- | :--- |
-| `eye add <name>` | Create a new task (use `-i`, `-d`, `-g` flags). |
-| `eye list` | Show status of all tasks. |
+| `eye add <name>` | Create a new task (interactive wizard or flags). |
+| `eye list` | Show status of all tasks (alias for `status`). |
 | `eye remove <id>` | Delete a task. |
-| `eye edit <id>` | Open task file in default editor. |
+| `eye edit <id>` | Modify task configuration. |
 | `eye in <time> <msg>` | Create a temporary one-off task. |
 
 ### Control
 | Command | Description |
 | :--- | :--- |
-| `eye start [id\|@grp]` | Start/Resume tasks or groups. |
-| `eye stop [id\|@grp]` | Stop tasks. |
-| `eye pause [id\|@grp]` | Pause tasks (preserves state). |
+| `eye start [id\|@grp]` | Start/Resume tasks. |
+| `eye stop [id\|@grp] [t]` | Pause tasks (preserves state, optional duration). |
+| `eye resume [id\|@grp]` | Resume paused tasks. |
 | `eye now [id]` | Trigger a task immediately. |
 
 ### Daemon & Config
