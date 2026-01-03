@@ -44,8 +44,15 @@ _apply_to_tasks() {
             elif [[ "$t" == @* ]]; then
                 local group_pattern="${t#@}"
                 _load_task "$task_id"
-                if [[ "$EYE_T_GROUP" =~ ^${group_pattern}$ ]]; then
-                    task_matches=1; break
+                # If pattern contains wildcards (*), use it as regex, otherwise exact match
+                if [[ "$group_pattern" == *"*"* ]]; then
+                    if [[ "$EYE_T_GROUP" =~ ^${group_pattern}$ ]]; then
+                        task_matches=1; break
+                    fi
+                else
+                    if [[ "$EYE_T_GROUP" == "$group_pattern" ]]; then
+                        task_matches=1; break
+                    fi
                 fi
             else
                 if [[ "$task_id" == "$t" ]]; then
@@ -117,7 +124,9 @@ _cb_cli_time_shift() {
     local id="$1"
     local delta="$2"
     if _core_task_time_shift "$id" "$delta"; then
-        msg_success "Task $id time shifted (New Next: $(_format_duration $((EYE_T_INTERVAL - ($(date +%s) - EYE_T_LAST_RUN)))) )"
+        local now=$(date +%s)
+        local next_val=$((EYE_T_INTERVAL - (now - EYE_T_LAST_RUN)))
+        msg_success "Task $id time shifted (New Next: $(_format_duration $next_val))"
     fi
 }
 
@@ -512,7 +521,13 @@ _cmd_status() {
     local daemon_active=false ref_time=$(date +%s)
     [[ -f "$PID_FILE" ]] && kill -0 $(cat "$PID_FILE") 2>/dev/null && daemon_active=true
     if [[ "$daemon_active" != "true" ]]; then
-        [[ -f "$STOP_FILE" ]] && ref_time=$(cat "$STOP_FILE") || ref_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+        if [ -f "$STOP_FILE" ]; then
+            ref_time=$(cat "$STOP_FILE")
+        else
+            # Fallback to directory timestamp but cap it to prevent 'leaping' during ad-hoc file changes
+            local dir_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
+            ref_time=$dir_time
+        fi
     fi
     if [[ -n "$target_task" ]]; then
         [[ ! -t 1 ]] && { cat "$TASKS_DIR/$target_task"; return; }

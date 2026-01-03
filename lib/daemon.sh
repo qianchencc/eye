@@ -139,14 +139,17 @@ _execute_task() {
         
         if [[ "$EYE_T_DURATION" -le 0 ]]; then
             _notify_provider "${EYE_T_NAME:-$task_id}" "$start_msg"
+            sleep 0.1 # Ensure notification DBus call is processed
             [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && _play_provider "$EYE_T_SOUND_START"
         else
             _notify_provider "${EYE_T_NAME:-$task_id}" "$start_msg"
+            sleep 0.1
             [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && _play_provider "$EYE_T_SOUND_START"
             
             sleep "$EYE_T_DURATION"
             
             _notify_provider "${EYE_T_NAME:-$task_id}" "$end_msg"
+            sleep 0.1
             [[ "$EYE_T_SOUND_ENABLE" == "true" ]] && _play_provider "$EYE_T_SOUND_END"
         fi
 
@@ -188,13 +191,19 @@ _execute_task() {
 _daemon_cleanup() {
     log_system "Daemon" "Shutting down... Cleaning up child processes."
     
-    # Kill all tracked background PIDs
-    for pid in "${!RUNNING_PID_MAP[@]}"; do
-        if kill -0 "$pid" 2>/dev/null; then
-            log_debug "Daemon" "Killing child PID $pid"
-            kill "$pid" 2>/dev/null
-        fi
-    done
+    # Kill all registered task PIDs
+    local pids_dir="$STATE_DIR/pids"
+    if [ -d "$pids_dir" ]; then
+        for pid_file in "$pids_dir"/*; do
+            [ -f "$pid_file" ] || continue
+            local pid=$(cat "$pid_file" 2>/dev/null)
+            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+                log_debug "Daemon" "Killing task process $pid"
+                kill "$pid" 2>/dev/null
+            fi
+            rm -f "$pid_file"
+        done
+    fi
     
     rm -f "$PID_FILE"
     rm -f "$STATE_DIR/cycle.lock"
@@ -255,27 +264,9 @@ _daemon_loop() {
     local has_inotify=false
     command -v inotifywait >/dev/null 2>&1 && has_inotify=true
 
-    # 初始化运行中清单 (Declared global so trap can see it? No, needs to be accessible. 
-    # Bash variables are global by default unless 'local' is used. 
-    # However, _daemon_loop is called as a function. 
-    # Let's declare it at file scope or ensure trap can access it. 
-    # Since trap executes in the same context, it should be fine if declared here but NOT local if we want to be safe, 
-    # but local works in bash 4+ for traps set inside function. 
-    # Let's make it explicitly associative.)
-    declare -A RUNNING_PID_MAP
-
     while true; do
         _load_global_config
         _init_messages
-
-        # Reap background processes and update PID map
-        jobs > /dev/null 
-        for pid in "${!RUNNING_PID_MAP[@]}"; do
-            if ! kill -0 "$pid" 2>/dev/null; then
-                log_debug "Daemon" "Reaped task process $pid"
-                unset RUNNING_PID_MAP["$pid"]
-            fi
-        done
 
         # 扫描任务并触发
         for task_file in "$TASKS_DIR"/*; do
@@ -284,33 +275,17 @@ _daemon_loop() {
             task_id=$(basename "$task_file")
             
             if _load_task "$task_id"; then
-                # 检查此任务是否已经在运行列表中（通过 PID 映射或物理锁文件检测）
-                local is_running=false
-                local lock_file="$STATE_DIR/lock.$task_id"
-                
-                # 检查内存中的 PID 映射
-                for pid in "${!RUNNING_PID_MAP[@]}"; do
-                    if [[ "${RUNNING_PID_MAP[$pid]}" == "$task_id" ]]; then
-                        is_running=true; break
-                    fi
-                done
-                
-                # 物理锁文件校验（Double Check）
-                if [[ "$is_running" == "false" && -f "$lock_file" ]]; then
-                    # 检查锁文件对应的进程是否真的还在
-                    local lock_pid=$(cat "$lock_file" 2>/dev/null)
-                    if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
-                        is_running=true
+                # 检查此任务是否已经在运行列表中 (物理 PID 注册表)
+                local pid_file="$STATE_DIR/pids/$task_id"
+                if [[ -f "$pid_file" ]]; then
+                    local task_pid=$(cat "$pid_file" 2>/dev/null)
+                    if [[ -n "$task_pid" ]] && kill -0 "$task_pid" 2>/dev/null; then
+                        # log_debug "$task_id" "Skip: Task still running (PID $task_pid)"
+                        continue
                     else
-                        # 锁文件残留，清理掉
-                        rm -f "$lock_file"
-                        log_warn "$task_id" "Removed stale lock file"
+                        # Stale PID file
+                        rm -f "$pid_file"
                     fi
-                fi
-
-                if [[ "$is_running" == "true" ]]; then
-                    log_debug "$task_id" "Skip: Task is still running (Lock/PID check)"
-                    continue
                 fi
 
                 local now=$(date +%s)
@@ -325,9 +300,8 @@ _daemon_loop() {
                 if [[ "$EYE_T_STATUS" == "running" ]]; then
                     current_time=$(date +%s)
                     local diff=$((current_time - EYE_T_LAST_RUN))
-                    log_debug "$task_id" "Check: diff=$diff, interval=$EYE_T_INTERVAL"
                     
-                    # 终极对齐保护：如果 LAST_RUN 为 0，说明是异常状态，立即对齐到当前时间以启动计时
+                    # 终极对齐保护
                     if [[ "${EYE_T_LAST_RUN:-0}" -eq 0 ]]; then
                         EYE_T_LAST_RUN=$current_time
                         _save_task "$task_id"
@@ -336,25 +310,20 @@ _daemon_loop() {
                     fi
 
                     if [ $diff -ge "$EYE_T_INTERVAL" ]; then
-                        # Update timestamp BEFORE backgrounding to prevent re-triggering
+                        # Update timestamp BEFORE backgrounding
                         local intervals_passed=$(( diff / EYE_T_INTERVAL ))
                         EYE_T_LAST_RUN=$(( EYE_T_LAST_RUN + (intervals_passed * EYE_T_INTERVAL) ))
                         _save_task "$task_id"
                         
-                        log_sched "$task_id" "Triggering (Passed: $intervals_passed intervals)"
-                        # 触发执行并记录 PID
+                        log_sched "$task_id" "Triggering ($intervals_passed intervals passed)"
                         _execute_task "$task_id" &
-                        RUNNING_PID_MAP[$!]="$task_id"
                     fi
-                else
-                    log_debug "$task_id" "Skip: Status is $EYE_T_STATUS"
                 fi
             fi
         done
         
         # 混合等待机制：
         if [ "$has_inotify" = true ]; then
-            # Add moved_to because _save_task uses 'mv'
             inotifywait -t 5 -q -e close_write,create,delete,moved_to "$TASKS_DIR" >/dev/null 2>&1 || true
         else
             sleep 5

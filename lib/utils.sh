@@ -164,11 +164,18 @@ _parse_duration() {
 # Format seconds to readable string
 _format_duration() {
     local T=$1
+    local is_neg=0
+    if [ $T -lt 0 ]; then
+        is_neg=1
+        T=$(( -T ))
+    fi
+
     local D=$((T/60/60/24))
     local H=$((T/60/60%24))
     local M=$((T/60%60))
     local S=$((T%60))
     
+    [ $is_neg -eq 1 ] && printf "-"
     [[ $D -gt 0 ]] && printf '%dd ' $D
     [[ $H -gt 0 ]] && printf '%dh ' $H
     [[ $M -gt 0 ]] && printf '%dm ' $M
