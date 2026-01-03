@@ -162,6 +162,19 @@ _daemon_loop() {
             
             # 加载任务并检查触发
             if _load_task "$task_id"; then
+                local now=$(date +%s)
+                # 检查自动恢复
+                if [[ "$STATUS" == "paused" && "$RESUME_AT" -gt 0 && "$now" -ge "$RESUME_AT" ]]; then
+                    # 执行恢复逻辑 (补偿时间)
+                    local diff=$((now - ${PAUSE_TS:-$now}))
+                    LAST_RUN=$((LAST_RUN + diff))
+                    STATUS="running"
+                    PAUSE_TS=0
+                    RESUME_AT=0
+                    _save_task "$task_id"
+                    _log_history "$task_id" "AUTO-RESUMED"
+                fi
+
                 if [[ "$STATUS" == "running" ]]; then
                     current_time=$(date +%s)
                     if [ $((current_time - LAST_RUN)) -ge "$INTERVAL" ]; then

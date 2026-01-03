@@ -76,10 +76,37 @@ _cb_set_status() {
         local diff=$((now - ${PAUSE_TS:-$now}))
         LAST_RUN=$((LAST_RUN + diff))
         PAUSE_TS=0
+        RESUME_AT=0
     fi
     
+    # If starting/resuming, always clear resume timer
+    if [[ "$new_status" == "running" ]]; then
+        RESUME_AT=0
+    fi
+
     STATUS="$new_status"
     msg_info "Task $id -> $new_status"
+}
+
+_cb_set_pause() {
+    local id="$1"
+    local duration="$2"
+    
+    if [[ "$STATUS" != "paused" ]]; then
+        PAUSE_TS=$(date +%s)
+    fi
+    STATUS="paused"
+    
+    if [[ -n "$duration" ]]; then
+        local seconds=$(_parse_duration "$duration")
+        if [ $? -eq 0 ]; then
+            RESUME_AT=$(( $(date +%s) + seconds ))
+            msg_info "Task $id paused for $duration (Until $(date -d "@$RESUME_AT" "+%H:%M:%S"))."
+        fi
+    else
+        RESUME_AT=0
+        msg_info "Task $id paused indefinitely."
+    fi
 }
 
 _cb_time_shift() {
@@ -149,34 +176,33 @@ _cmd_start() {
 }
 
 _cmd_stop() {
-    local target="$1"
+    local arg1="$1"
+    local arg2="$2"
+    local target=""
     local duration=""
     
-    if [[ "$target" == "help" || "$target" == "-h" ]]; then
+    if [[ "$arg1" == "help" || "$arg1" == "-h" ]]; then
         msg_info "$MSG_HELP_STOP_USAGE"
         return
     fi
 
-    if [[ "$target" == "--all" || "$target" == "-a" ]]; then
-        target="--all"
-        duration="$2"
-    elif [[ -z "$target" ]]; then
+    # Smarter Parsing: Identify which is duration and which is target
+    if [[ -z "$arg1" ]]; then
         target="@$(_get_default_target)"
+    elif [[ "$arg1" == "--all" || "$arg1" == "-a" ]]; then
+        target="--all"
+        duration="$arg2"
+    elif [[ "$arg1" =~ ^[0-9]+[smhd]$ || "$arg1" =~ ^[0-9]+$ ]]; then
+        # arg1 looks like duration
+        duration="$arg1"
+        target="${arg2:-@$(_get_default_target)}"
     else
-        # check if 2nd arg is duration
-        if [[ -n "$2" ]]; then
-            duration="$2"
-        fi
+        # arg1 looks like target
+        target="$arg1"
+        duration="$arg2"
     fi
 
-    _apply_to_tasks "$target" _cb_set_status "paused"
-    
-    if [[ -n "$duration" ]]; then
-        local seconds=$(_parse_duration "$duration")
-        if [ $? -eq 0 ]; then
-            msg_info "Tasks paused for $duration."
-        fi
-    fi
+    _apply_to_tasks "$target" _cb_set_pause "$duration"
 }
 
 _cmd_resume() {
