@@ -11,7 +11,7 @@
 * **Usage**: `eye start`, `eye start task1`, `eye start @work`
 * **描述**:
     * 无参数：启动 Daemon（如果未运行）。
-    * 有参数：将目标任务状态设为 `running`，并更新 `LAST_RUN` 为当前时间。
+    * 有参数：将目标任务状态设为 `running`，并更新 `EYE_T_LAST_RUN` 为当前时间。
 
 
 * **`stop [target] [time]`**
@@ -19,12 +19,12 @@
 * **描述**: 暂停目标任务。
     * 无 `[time]`: 无期限暂停。
     * 有 `[time]`: 暂停指定时长（如 `30m`, `1h`）。
-    * **特性**: 暂停期间 `NEXT` 触发时间保持静止，不会随时间流逝而减少。
+    * **特性**: 任务进入 `paused` 状态。暂停期间 `NEXT` 触发时间保持静止。
 
 
 * **`resume [target]`**
 * **Usage**: `eye resume`, `eye resume @work`
-* **描述**: 恢复运行，根据暂停时长自动补偿 `LAST_RUN` 时间戳，使任务从暂停点继续。
+* **描述**: 恢复运行，根据暂停时长自动补偿 `EYE_T_LAST_RUN` 时间戳，使任务从暂停点继续。
 
 
 
@@ -38,38 +38,30 @@
 * **描述**: 显示守护进程状态及任务列表。支持通过 `eye status help` 查看详细用法。
 * **视图模式**:
     * **默认 (Compact)**: `Status  ID  Timing  Count  NEXT  Group` (完美对齐)。
-    * **详细 (--long, -l)**: 带有 ASCII 边框的横向表格，移除了冗余列。
+    * **详细 (--long, -l)**: 带有 ASCII 边框的横向表格。
     * **单任务详情 (<task_id>)**: 纵向对齐的键值对看板，展示所有元数据及配置。
 * **参数**:
     * `--long, -l`: 显示横向详细表格。
-    * `--sort, -s <field>`: 排序依据。支持 `name`, `created`, `next`, `group`。默认为 `next`。
+    * `--sort, -s <field>`: 排序依据: `name`, `created`, `next`, `group`。
     * `--reverse, -r`: 倒序排列。
 
 
 ### 1.3 任务增删改 (CRUD)
 
-**改进**: 增强了 `add` 与 `edit` 的功能，支持完整的音效与通知配置。
-
 * **`add <name> [options]`**
-* **Usage**: `eye add water -i 1h --sound-start bell`, `eye add task1 help`
-* **描述**: 创建新任务。支持通过 `eye add help` 查看所有可用参数。
-* **交互模式**: 不带参数时进入交互向导，提供音效列表与变量提示。
-
+* **Usage**: `eye add water -i 1h --sound-start bell`
+* **描述**: 创建新任务。支持交互式向导或参数模式。
 
 * **`edit <target> [options]`**
-* **Usage**: `eye edit water -i 45m`, `eye edit vision --sound-off`
-* **描述**: 修改任务配置。支持通过 `eye edit help` 查看参数。
-    * **新增选项**: `--sound-on/off` 快速开关音效。
-    * **交互模式**: 不带参数时进入交互式编辑，涵盖所有配置项（含音效与文案）。
-
+* **Usage**: `eye edit water -i 45m`
+* **描述**: 修改任务配置。支持交互式编辑。
 
 * **`in <time> <message>`**
 * **Usage**: `eye in 30m "Take a nap"`
 * **描述**: 快速创建一次性临时任务。
 
-
 * **`rm <target>`**
-* **Usage**: `eye rm water`, `eye rm @temp_group`
+* **Usage**: `eye rm water`
 * **描述**: 物理删除任务文件。
 
 
@@ -77,42 +69,55 @@
 
 * **`time <delta> [target]`**
 * **Usage**: `eye time +10m @work`, `eye time -5m water`
-* **描述**: 修改任务的 `LAST_RUN` 时间戳以快进或延后。
+* **描述**: 修改任务的 `EYE_T_LAST_RUN` 时间戳以快进或延后。
 
 
 * **`count <delta> [target]`**
 * **Usage**: `eye count -1 water`
-* **描述**: 修改任务的 `REMAIN_COUNT`。
-* **限制**: 不允许修改 `TARGET_COUNT = -1` (无限循环) 的任务计数。
+* **描述**: 修改任务的 `EYE_T_REMAIN_COUNT`。
 
 
 * **`reset [target] [options]`**
-* **Usage**: `eye reset @work --timer`
+* **Usage**: `eye reset @work --time --count`
 * **描述**: 重置任务的计时器或计数器。
-
-
-### 1.5 帮助系统 (New)
-
-每个核心命令都内置了详细帮助：
-* `eye add help`
-* `eye edit help`
-* `eye status help`
-* `eye stop help`
 
 ---
 
 ## 2. 音频指令集 (Sound Commands)
 
-* **`eye sound`**: 直接运行显示帮助。
-* **`list`**: 列出所有可用音效 Tag。
-* **`play <tag>`**: 试听音效。
-* **`on/off [target]`**: 全局或针对特定任务开关音效。
+* **`eye sound list`**: 列出所有可用音效 Tag。
+* **`eye sound play <tag>`**: 试听音效。
+* **`eye sound add <tag> <path>`**: 注册自定义音效。
+* **`eye sound on/off [target]`**: 开启/关闭音效。
 
 ---
 
 ## 3. 守护进程与配置 (Daemon & Config)
 
 * **`eye daemon up/down`**: 启动/停止服务。
-* **`eye daemon default <id>`**: 设置默认操作目标。
 * **`eye daemon quiet <on/off>`**: 静默模式。
 * **`eye daemon language <zh/en>`**: 切换语言。
+* **`eye daemon default <id>`**: 设置默认任务目标。
+
+### 3.1 高级 Provider 配置 (New)
+
+通过手动编辑 `~/.config/eye/eye.conf` 或使用 `eye daemon` 命令（如支持）配置：
+
+* **`NOTIFY_BACKEND`**:
+    * `desktop`: 桌面通知 (notify-send)。
+    * `wall`: 系统广播 (wall)。
+    * `tmux`: Tmux 状态栏消息。
+    * `auto`: 自动探测（默认）。
+* **`SOUND_BACKEND`**:
+    * `paplay`: PulseAudio (默认)。
+    * `mpv`: 使用 mpv 播放。
+    * `aplay`: ALSA 播放。
+    * `auto`: 自动探测。
+
+---
+
+## 4. 架构特性
+
+* **事件驱动**: 守护进程优先使用 `inotifywait` 监听任务目录，实现配置秒级生效及零闲置 CPU 占用。
+* **Provider 抽象**: 通知与音频输出已完全解耦，适配桌面、服务器、容器等多种运行环境。
+* **命名空间隔离**: 所有内部变量使用 `EYE_T_` 前缀，确保 `source` 加载时的安全性。

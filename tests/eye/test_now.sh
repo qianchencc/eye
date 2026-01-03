@@ -14,10 +14,11 @@ echo "NOTIFY: $*" >> /tmp/notify_mock.log
 EOF
 chmod +x /tmp/mock_bin/notify-send
 
-# Run with mocked path
+# Run with mocked path and explicit backend
+export NOTIFY_BACKEND="desktop"
 PATH="/tmp/mock_bin:$PATH" $EYE now "$TASK"
-# Now is backgrounded, wait a bit
-sleep 1
+# Now is backgrounded, wait a bit longer for providers
+sleep 2
 
 # Check if notification contains replaced variables
 if [ ! -f "$MOCK_LOG" ]; then

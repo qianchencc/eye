@@ -2,22 +2,6 @@
 
 # ================= 守护进程核心 (lib/daemon.sh) =================
 
-# --- Provider 抽象层 ---
-
-_notify_provider() {
-    local title="$1"
-    local body="$2"
-    local timeout="${3:-5000}"
-    
-    # 以后可以根据配置切换到 termux-notification 或 kdialog 等
-    notify-send -t "$timeout" "$title" "$body"
-}
-
-_play_provider() {
-    local tag="$1"
-    _play "$tag"
-}
-
 # --- 核心辅助 ---
 
 _try_lock() {
@@ -123,8 +107,9 @@ _daemon_loop() {
         rm -f "$STOP_FILE"
     fi
 
-    msg_info "Daemon started. PID: $BASHPID"
+    msg_info "Daemon started (PID: $BASHPID, Mode: $(command -v inotifywait >/dev/null && echo "Event-Driven" || echo "Polling"))"
 
+    # 初始化补偿逻辑
     shopt -s nullglob
     for task_file in "$TASKS_DIR"/*; do
         [[ $(basename "$task_file") == .* ]] && continue
@@ -143,10 +128,15 @@ _daemon_loop() {
         fi
     done
 
+    # 检查 inotifywait 是否可用
+    local has_inotify=false
+    command -v inotifywait >/dev/null 2>&1 && has_inotify=true
+
     while true; do
         _load_global_config
         _init_messages
 
+        # 扫描任务并触发
         for task_file in "$TASKS_DIR"/*; do
             [[ $(basename "$task_file") == .* ]] && continue
             [ -e "$task_file" ] || continue
@@ -154,12 +144,14 @@ _daemon_loop() {
             
             if _load_task "$task_id"; then
                 local now=$(date +%s)
+                # 自动恢复
                 if [[ "$EYE_T_STATUS" == "paused" && "$EYE_T_RESUME_AT" -gt 0 && "$now" -ge "$EYE_T_RESUME_AT" ]]; then
                     _core_task_resume "$task_id"
                     _save_task "$task_id"
                     _log_history "$task_id" "AUTO-RESUMED"
                 fi
 
+                # 检查执行
                 if [[ "$EYE_T_STATUS" == "running" ]]; then
                     if [ $((now - EYE_T_LAST_RUN)) -ge "$EYE_T_INTERVAL" ]; then
                         _execute_task "$task_id" &
@@ -167,6 +159,15 @@ _daemon_loop() {
                 fi
             fi
         done
-        sleep 5
+        
+        # 混合等待机制：
+        # 如果有 inotify，等待文件变动 OR 5秒超时
+        # 如果没有 inotify，直接 sleep 5秒
+        if [ "$has_inotify" = true ]; then
+            # -t 5 表示 5 秒超时，如果没有事件发生也返回
+            inotifywait -t 5 -q -e close_write,create,delete "$TASKS_DIR" >/dev/null 2>&1 || true
+        else
+            sleep 5
+        fi
     done
 }
