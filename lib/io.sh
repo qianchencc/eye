@@ -7,9 +7,12 @@
 _atomic_write() {
     local target_file="$1"
     local content="$2"
+    local target_dir=$(dirname "$target_file")
+    local target_name=$(basename "$target_file")
     local tmp_file
     
-    tmp_file=$(mktemp "${target_file}.XXXXXX") || return 1
+    # 使用隐藏的临时文件
+    tmp_file=$(mktemp "${target_dir}/.${target_name}.XXXXXX") || return 1
     
     if echo "$content" > "$tmp_file"; then
         # 尝试强制同步到磁盘

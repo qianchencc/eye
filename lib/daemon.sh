@@ -128,25 +128,40 @@ _log_history() {
 # 守护进程主循环
 _daemon_loop() {
     echo $BASHPID > "$PID_FILE"
-    rm -f "$STOP_FILE"
     
+    # 停机时间补偿：在一切开始之前执行
+    local now=$(date +%s)
+    local downtime_offset=0
+    if [ -f "$STOP_FILE" ]; then
+        local stop_time=$(cat "$STOP_FILE")
+        downtime_offset=$((now - stop_time))
+        rm -f "$STOP_FILE"
+    fi
+
     msg_info "Daemon started. PID: $BASHPID"
 
-    # 初始化逻辑：对齐所有任务的计时器，防止由于长期停机导致的“通知风暴”
-    local now=$(date +%s)
+    # 初始化逻辑：处理补偿和对齐
+    shopt -s nullglob
     for task_file in "$TASKS_DIR"/*; do
+        # 忽略隐藏文件 (临时文件)
+        [[ $(basename "$task_file") == .* ]] && continue
         [ -e "$task_file" ] || continue
+        
         task_id=$(basename "$task_file")
         if _load_task "$task_id" && [[ "$STATUS" == "running" ]]; then
-            if [ "$LAST_RUN" -eq 0 ]; then
-                # 从未运行过的任务，从现在开始计时
-                LAST_RUN=$now
-                _save_task "$task_id"
-            elif [ $((now - LAST_RUN)) -ge "$INTERVAL" ]; then
-                # 已过期的任务，对齐到上一个理论触发点 (now - elapsed % interval)
-                LAST_RUN=$(( now - ((now - LAST_RUN) % INTERVAL) ))
-                _save_task "$task_id"
+            # 1. 应用停机补偿
+            if [ "$downtime_offset" -gt 0 ]; then
+                LAST_RUN=$((LAST_RUN + downtime_offset))
             fi
+
+            # 2. 对齐逻辑：防止过期太久导致的通知风暴
+            if [ "$LAST_RUN" -eq 0 ]; then
+                LAST_RUN=$now
+            elif [ $((now - LAST_RUN)) -ge "$INTERVAL" ]; then
+                # 已过期的任务，对齐到上一个理论触发点
+                LAST_RUN=$(( now - ((now - LAST_RUN) % INTERVAL) ))
+            fi
+            _save_task "$task_id"
         fi
     done
 
@@ -157,6 +172,7 @@ _daemon_loop() {
 
         # 扫描任务
         for task_file in "$TASKS_DIR"/*; do
+            [[ $(basename "$task_file") == .* ]] && continue
             [ -e "$task_file" ] || continue
             task_id=$(basename "$task_file")
             
@@ -178,8 +194,7 @@ _daemon_loop() {
                 if [[ "$STATUS" == "running" ]]; then
                     current_time=$(date +%s)
                     if [ $((current_time - LAST_RUN)) -ge "$INTERVAL" ]; then
-                        # 触发执行 (后台运行以防阻塞其他任务检查)
-                        # 注意：周期任务内部会有 sleep，所以必须后台执行
+                        # 触发执行
                         _execute_task "$task_id" &
                     fi
                 fi

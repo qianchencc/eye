@@ -28,8 +28,10 @@ _apply_to_tasks() {
     local matched=0
     
     # Iterate all tasks
+    shopt -s nullglob
     for task_file in "$TASKS_DIR"/*;
     do
+        [[ $(basename "$task_file") == .* ]] && continue
         [ -e "$task_file" ] || continue
         local task_id=$(basename "$task_file")
         
@@ -520,10 +522,11 @@ _cmd_status() {
     
     local rows=()
     shopt -s nullglob
-    local tasks=($"$TASKS_DIR"/*)
+    local tasks=("$TASKS_DIR"/*)
     [[ ${#tasks[@]} -eq 0 ]] && { echo " (No tasks found)"; return; }
 
     for task_file in "${tasks[@]}"; do
+        [[ $(basename "$task_file") == .* ]] && continue
         [ -e "$task_file" ] || continue
         local tid=$(basename "$task_file")
         if _load_task "$tid"; then
@@ -631,7 +634,7 @@ _cmd_daemon() {
             then
                 msg_warn "Daemon already running."
             else
-                rm -f "$STOP_FILE"
+                # 停机补偿逻辑已移入 _daemon_loop 初始化部分
                 _daemon_loop > /dev/null 2>&1 &
                 disown
                 msg_success "Daemon started."
