@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  eye-dev:
+    image: eye-dev-env
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/home/tester/eye
+    working_dir: /home/tester/eye
+    user: tester
+    command: tail -f /dev/null
+    environment:
+      - TERM=xterm-256color

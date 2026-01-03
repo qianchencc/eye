@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Source Logger
+if [ -f "$LIB_DIR/logger.sh" ]; then
+    source "$LIB_DIR/logger.sh"
+fi
+
 # ================= Logging & Formatting =================
 
 # Colors

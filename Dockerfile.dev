@@ -1,0 +1,25 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    sudo \
+    libnotify-bin \
+    pulseaudio-utils \
+    make \
+    sound-theme-freedesktop \
+    bash-completion \
+    bsdmainutils \
+    bsdextrautils \
+    git \
+    bash \
+    curl \
+    inotify-tools \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash tester && \
+    echo "tester ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+USER tester
+WORKDIR /home/tester/eye

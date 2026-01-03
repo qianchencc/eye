@@ -161,6 +161,13 @@ _cmd_stop() {
     else
         target="$arg1"; duration="$arg2"
     fi
+    
+    # Critical Fix: Ensure we are not just scheduling a change but effectively applying it
+    # AND ensuring that running tasks don't overwrite it.
+    # We can't easily force the running task to stop holding its memory, 
+    # but we can make the CLI wait or retry? No.
+    # The fix belongs in the Daemon/Task execution logic (re-reading state).
+    # Here we just apply the intent.
     _apply_to_tasks "$target" _cb_cli_stop "$duration"
 }
 
