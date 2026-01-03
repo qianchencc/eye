@@ -47,7 +47,7 @@ _init_messages() {
   up             启动守护进程
   down           停止守护进程
   uninstall      全量卸载 (不留痕迹)
-  update         检查更新 (--apply 应用更新)
+  update         检查更新 (--apply 应用, --force 强制)
   enable         开启开机自启 (Systemd)
   disable        关闭开机自启
   default <task> 设置默认任务目标
@@ -240,7 +240,7 @@ _init_messages() {
   up             Start daemon
   down           Stop daemon
   uninstall      Full uninstallation (no traces)
-  update         Check for updates (--apply to upgrade)
+  update         Check update (--apply to apply, --force to force)
   enable         Enable autostart (Systemd)
   disable        Disable autostart
   default <task> Set default task target

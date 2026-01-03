@@ -237,10 +237,18 @@ _cmd_reset() {
 
 _cmd_add() {
     local task_ids=()
-    if [[ -n "$1" && "$1" != -* && "$1" != "help" ]]; then
-        task_ids+=("$1")
-        shift
-    elif [[ ! -t 0 ]]; then
+    local options=()
+    
+    # Parse IDs first (before flags)
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -*) break ;;
+            *) task_ids+=("$1"); shift ;;
+        esac
+    done
+
+    # If no IDs in args, check stdin
+    if [[ ${#task_ids[@]} -eq 0 && ! -t 0 ]]; then
         while read -r line; do
             for word in $line; do task_ids+=("$word"); done
         done
@@ -251,7 +259,9 @@ _cmd_add() {
         return
     fi
     
-    local options=($@)
+    # The rest are options
+    options=("$@")
+
     for tid in "${task_ids[@]}"; do
         _execute_add_single "$tid" "${options[@]}"
     done
@@ -290,6 +300,7 @@ _execute_add_single() {
         [[ "$EYE_T_TARGET_COUNT" -gt 0 ]] && _ask_bool "$MSG_WIZARD_IS_TEMP" "n" EYE_T_IS_TEMP
         _prompt_confirm "$MSG_WIZARD_CONFIRM" || { msg_info "Cancelled."; return; }
     else
+        # Flag mode
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 -i|--interval) EYE_T_INTERVAL=$(_parse_duration "$2"); shift 2 ;; 
@@ -512,8 +523,22 @@ _cmd_daemon() {
             msg_success "Eye has been completely uninstalled."
             exit 0 ;;
         update)
-            local apply=false
-            [[ "$1" == "--apply" ]] && apply=true
+            local apply=false force=false
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --apply) apply=true ;;
+                    --force) force=true ;;
+                esac
+                shift
+            done
+
+            if [[ "$force" == "true" ]]; then
+                msg_info "🚀 Force updating to the latest remote version from main..."
+                git pull origin main && make install
+                msg_success "Eye force-updated successfully."
+                return 0
+            fi
+
             msg_info "🔍 Checking for updates (comparing versions)..."
             if ! git remote get-url origin >/dev/null 2>&1; then
                 msg_error "Error: No remote 'origin' found. Update requires a git repository."

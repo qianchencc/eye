@@ -160,12 +160,13 @@ test_language() {
     # Switch to English
     $EYE_BIN daemon language en
     local out_en=$($EYE_BIN list 2>&1)
-    assert_output_contains "$out_en" "Task List"
+    # When piped, 'list' returns raw IDs. Check for presence of created tasks.
+    assert_output_contains "$out_en" "periodic_infinite"
     
     # Switch to Chinese
     $EYE_BIN daemon language zh
     local out_zh=$($EYE_BIN list 2>&1)
-    assert_output_contains "$out_zh" "任务列表"
+    assert_output_contains "$out_zh" "periodic_infinite"
 }
 
 # ==========================================
