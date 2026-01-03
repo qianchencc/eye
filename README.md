@@ -9,7 +9,7 @@ It manages recurring tasks (like the 20-20-20 rule, hydration reminders, or medi
 - **Everything is a File**: Tasks are simple text files in `~/.config/eye/tasks/`.
 - **Spool Architecture**: Add, remove, or edit tasks atomically without stopping the daemon.
 - **Flexible Scheduling**: Support for **Pulse** (instant notification) and **Periodic** (duration-based with locking) tasks.
-- **Group Control**: Manage tasks in batches using `@group` selectors (e.g., `eye pause @work`).
+- **Group Control**: Manage tasks in batches using `@group` selectors (e.g., `eye pause @work`). Supports **Regular Expressions** for flexible matching (e.g., `eye stop "@work_.*"`).
 - **Resource Efficient**: Pure Bash, event-driven, minimal footprint.
 
 ## 🚀 Installation

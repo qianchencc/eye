@@ -12,12 +12,11 @@ _apply_to_tasks() {
     local target="$1" 
     local callback="$2"
     shift 2
-    local args=($@)
+    local args=("$@")
     local matched=0
     
     shopt -s nullglob
-    for task_file in "$TASKS_DIR"/*;
-    do
+    for task_file in "$TASKS_DIR"/*; do
         [[ $(basename "$task_file") == .* ]] && continue
         [ -e "$task_file" ] || continue
         local task_id=$(basename "$task_file")
@@ -25,9 +24,12 @@ _apply_to_tasks() {
         if [[ "$target" == "--all" ]]; then
             : 
         elif [[ "$target" == @* ]]; then
-            local group_name="${target#@}"
+            local group_pattern="${target#@}"
             _load_task "$task_id"
-            [[ "$EYE_T_GROUP" != "$group_name" ]] && continue
+            # Support Regex Matching for groups
+            if [[ ! "$EYE_T_GROUP" =~ ^${group_pattern}$ ]]; then
+                continue
+            fi
         else
             [[ "$task_id" != "$target" ]] && continue
         fi
