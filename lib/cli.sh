@@ -484,14 +484,63 @@ _cmd_daemon() {
     case "$cmd" in
         up)
             if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then msg_warn "Daemon already running."
-            else _daemon_loop > /dev/null 2>&1 & disown; msg_success "Daemon started."; fi ;;
+            else _daemon_loop > /dev/null 2>&1 & disown; msg_success "Daemon started."; fi ;; 
         down)
             if [ -f "$PID_FILE" ]; then date +%s > "$STOP_FILE"; kill $(cat "$PID_FILE") 2>/dev/null; rm "$PID_FILE"; msg_success "Daemon stopped."
-            else msg_info "Daemon not running."; fi ;;
+            else msg_info "Daemon not running."; fi ;; 
+        uninstall)
+            msg_info "🚀 Starting full uninstallation..."
+            _cmd_daemon down >/dev/null 2>&1
+            _cmd_daemon disable >/dev/null 2>&1
+            local bin_path=$(readlink -f "$0")
+            local project_root=$(dirname "$(dirname "$bin_path")")
+            if [[ -f "$project_root/uninstall.sh" ]]; then
+                msg_info "Running uninstall script..."
+                bash "$project_root/uninstall.sh" --force
+            elif [[ -f "$project_root/Makefile" ]]; then
+                msg_info "Using Makefile to purge..."
+                (cd "$project_root" && make purge)
+            else
+                msg_info "Performing manual purge..."
+                rm -f "$bin_path"
+                rm -rf "$LIB_DIR"
+                rm -rf "$EYE_SHARE_DIR"
+                rm -rf "$CONFIG_DIR"
+                rm -rf "$STATE_DIR"
+                msg_success "Eye purged manually."
+            fi
+            msg_success "Eye has been completely uninstalled."
+            exit 0 ;;
+        update)
+            local apply=false
+            [[ "$1" == "--apply" ]] && apply=true
+            msg_info "🔍 Checking for updates (comparing versions)..."
+            if ! git remote get-url origin >/dev/null 2>&1; then
+                msg_error "Error: No remote 'origin' found. Update requires a git repository."
+                return 1
+            fi
+            git fetch origin main >/dev/null 2>&1
+            local remote_version=$(git show origin/main:lib/constants.sh 2>/dev/null | grep "EYE_VERSION=" | cut -d'"' -f2)
+            if [[ -z "$remote_version" ]]; then
+                msg_error "Error: Could not retrieve remote version from 'main' branch."
+                return 1
+            fi
+            if [[ "$EYE_VERSION" == "$remote_version" ]]; then
+                msg_success "Eye is already at the latest version ($EYE_VERSION)."
+            else
+                msg_warn "Update available! Local: $EYE_VERSION -> Remote: $remote_version"
+                if [[ "$apply" == "true" ]]; then
+                    msg_info "Applying update from main..."
+                    git pull origin main && make install
+                    msg_success "Eye updated to $remote_version. Please restart the daemon."
+                else
+                    msg_info "Run 'eye daemon update --apply' to upgrade."
+                fi
+            fi ;;
         default)
             local task="$1"
             if [[ -z "$task" ]]; then echo "Current default task: ${DEFAULT_TASK:-eye_rest}"
-            else DEFAULT_TASK="$task"; _save_global_config; msg_success "Default task set to: $task"; fi ;;
+            else DEFAULT_TASK="$task"; _save_global_config; msg_success "Default task set to: $task"; fi ;; 
         enable)
             mkdir -p "$SYSTEMD_DIR"
             local bin_path=$(readlink -f "$0")
@@ -508,7 +557,7 @@ Environment="PATH=$PATH"
 [Install]
 WantedBy=default.target
 EOF
-            systemctl --user daemon-reload && systemctl --user enable eye.service && msg_success "Autostart enabled (Systemd)." ;;
+            systemctl --user daemon-reload && systemctl --user enable eye.service && msg_success "Autostart enabled (Systemd)." ;; 
         disable) systemctl --user disable eye.service; rm -f "$SERVICE_FILE"; systemctl --user daemon-reload; msg_success "Autostart disabled." ;; 
         quiet) GLOBAL_QUIET="$1"; _save_global_config; msg_success "Quiet mode: $GLOBAL_QUIET" ;; 
         root-cmd) ROOT_CMD="$1"; _save_global_config; msg_success "Root command set to: $ROOT_CMD" ;; 
@@ -516,7 +565,6 @@ EOF
         help|*) echo "$MSG_HELP_DAEMON_HEADER"; echo -e "$MSG_HELP_DAEMON_CMDS" ;; 
     esac
 }
-
 _cmd_version() { echo "eye version $EYE_VERSION"; }
 
 _cmd_usage() {

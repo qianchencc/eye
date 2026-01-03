@@ -77,10 +77,18 @@ uninstall:
 	@echo "🗑️ Uninstalled"
 
 # 全量卸载 (清理配置和状态)
-purge: uninstall
-	@rm -rf $(CONF_DIR)
-	@rm -rf $(HOME)/.local/state/eye
-	@rm -f $(HOME)/.config/systemd/user/eye.service
-	@echo "🧹 Purged configuration and state"
+purge:
+	@if [ -f ./uninstall.sh ]; then \
+		bash ./uninstall.sh --force; \
+	else \
+		rm -f $(BIN_DIR)/eye; \
+		rm -rf $(LIB_DIR); \
+		rm -rf $(SHARE_DIR); \
+		rm -rf $(CONF_DIR); \
+		rm -rf $(HOME)/.local/state/eye; \
+		rm -f $(HOME)/.config/systemd/user/eye.service; \
+		rm -f $(COMP_DIR)/eye; \
+		echo "🧹 Purged manually (uninstall.sh missing)"; \
+	fi
 
 .PHONY: all check install dev uninstall purge

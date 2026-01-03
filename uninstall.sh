@@ -1,51 +1,46 @@
 #!/bin/bash
+# uninstall.sh - Comprehensive cleanup for Eye
 
-# Eye - One-line Uninstaller
 set -e
 
-# Color definitions
+# --- Colors ---
 RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${GREEN}>>> Eye Protection Tool Uninstaller${NC}"
+# Allow --force flag to skip confirmation
+FORCE=false
+[[ "$1" == "--force" ]] && FORCE=true
 
-# 1. Stop the daemon if it's running
-if command -v eye >/dev/null 2>&1; then
-    echo -e "${YELLOW}Stopping eye daemon...${NC}"
-    eye stop >/dev/null 2>&1 || true
+if [ "$FORCE" = false ]; then
+    read -p "⚠️  Are you sure you want to completely uninstall Eye and remove ALL tasks/config? [y/N] " choice
+    [[ "$choice" != "y" && "$choice" != "Y" ]] && { echo "Aborted."; exit 0; }
 fi
 
-# 2. Run make purge
-if [ -f "Makefile" ]; then
-    echo -e "${YELLOW}Running make purge...${NC}"
-    make purge
-else
-    echo -e "${RED}Error: Makefile not found. Cannot perform full uninstall.${NC}"
-    exit 1
+echo "🗑️  Starting full cleanup..."
+
+# 1. Stop Daemon if running
+EYE_PID_FILE="$HOME/.local/state/eye/daemon.pid"
+if [ -f "$EYE_PID_FILE" ]; then
+    PID=$(cat "$EYE_PID_FILE")
+    kill "$PID" 2>/dev/null || true
+    echo "Stopping daemon (PID $PID)..."
 fi
 
-# 3. Clean up PATH in shell RC files
-echo -e "${YELLOW}Cleaning up environment...${NC}"
-LOCAL_BIN="$HOME/.local/bin"
-FILES_TO_CLEAN=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+# 2. Disable Systemd Service
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user disable eye.service >/dev/null 2>&1 || true
+fi
 
-for RC_FILE in "${FILES_TO_CLEAN[@]}"; do
-    if [ -f "$RC_FILE" ]; then
-        if grep -q "# Eye Path" "$RC_FILE"; then
-            # Remove the comment and the export line
-            sed -i '/# Eye Path/d' "$RC_FILE"
-            # Use | as delimiter to avoid issues with / in paths
-            sed -i "s|export PATH=\"\$PATH:$LOCAL_BIN\"||g" "$RC_FILE"
-            # Remove resulting empty lines
-            sed -i '/^$/d' "$RC_FILE"
-            echo -e "${GREEN}Removed Eye Path from $RC_FILE${NC}"
-        fi
-    fi
-done
+# 3. Remove Files (Mirroring Makefile purge)
+echo "Removing binaries and libraries..."
+rm -f "$HOME/.local/bin/eye"
+rm -rf "$HOME/.local/lib/eye"
+rm -rf "$HOME/.local/share/eye"
+rm -f "$HOME/.local/share/bash-completion/completions/eye"
 
-echo -e "\n${GREEN}====================================${NC}"
-echo -e "🗑️  ${GREEN}Eye has been fully uninstalled.${NC}"
-echo -e "🧹  ${GREEN}Configuration and state files removed.${NC}"
-echo -e "${GREEN}====================================${NC}"
+echo "Cleaning configuration and state..."
+rm -rf "$HOME/.config/eye"
+rm -rf "$HOME/.local/state/eye"
+rm -f "$HOME/.config/systemd/user/eye.service"
+
+echo -e "${RED}✅ Eye has been completely removed from your system.${NC}"

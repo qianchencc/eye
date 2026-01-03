@@ -109,6 +109,8 @@
 ## 3. 守护进程与配置 (Daemon & Config)
 
 * **`eye daemon up/down`**: 启动/停止服务。
+* **`eye daemon uninstall`**: **[新]** 全量卸载。停止服务并删除所有二进制、库文件、配置文件及状态数据。
+* **`eye daemon update [--apply]`**: **[新]** 检查更新。对比远程仓库 `main` 分支的版本号。使用 `--apply` 自动升级。
 * **`eye daemon quiet <on/off>`**: 静默模式。
 * **`eye daemon language <zh/en>`**: 切换语言。
 * **`eye daemon default <id>`**: 设置默认任务目标。
