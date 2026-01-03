@@ -31,6 +31,7 @@ _init_messages() {
         
         MSG_USAGE_MANAGE="任务管理:"
         MSG_USAGE_CMD_ADD="  add <name>       创建任务 (支持交互/参数)"
+        MSG_USAGE_CMD_IN="  in <time> <msg>  创建一次性临时提醒"
         MSG_USAGE_CMD_RM="  remove <id>      删除任务"
         MSG_USAGE_CMD_GROUP="  group <id> [grp] 修改任务分组"
         MSG_USAGE_CMD_EDIT="  edit <id>        修改任务"
@@ -146,6 +147,18 @@ _init_messages() {
   eye group water health      将 'water' 任务移动到 'health' 组
   eye group vision none        将 'vision' 任务移出当前组"
 
+        MSG_HELP_IN_USAGE="用法: eye in <time> <message>
+
+描述: 快速创建一个一次性的临时任务。该任务在触发一次后会自动删除。
+
+参数:
+  time                   多久后触发 (例如: 30m, 1h, 90s)
+  message                通知时显示的文案
+
+示例:
+  eye in 30m \"Take a nap\"
+  eye in 5m \"Meeting starts\""
+
         # General Messages
         MSG_TASK_CREATED="✅ 任务已创建: %s"
         MSG_TASK_REMOVED="🗑️  任务已删除: %s"
@@ -224,6 +237,7 @@ _init_messages() {
         
         MSG_USAGE_MANAGE="Task Management:"
         MSG_USAGE_CMD_ADD="  add <name>       Create task (interactive/flags)"
+        MSG_USAGE_CMD_IN="  in <time> <msg>  Create one-off reminder"
         MSG_USAGE_CMD_RM="  remove <id>      Delete task"
         MSG_USAGE_CMD_GROUP="  group <id> [grp] Modify task group"
         MSG_USAGE_CMD_EDIT="  edit <id>        Edit task"
@@ -338,6 +352,18 @@ Arguments:
 Examples:
   eye group water health      Move 'water' task to 'health' group
   eye group vision none        Remove 'vision' task from its current group"
+
+        MSG_HELP_IN_USAGE="Usage: eye in <time> <message>
+
+Description: Quickly create a one-off temporary task. The task is automatically deleted after triggering once.
+
+Arguments:
+  time                   Trigger delay (e.g., 30m, 1h, 90s)
+  message                Notification text to display
+
+Examples:
+  eye in 30m \"Take a nap\"
+  eye in 5m \"Meeting starts\""
 
         # General Messages
         MSG_TASK_CREATED="✅ Task created: %s"

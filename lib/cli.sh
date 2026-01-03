@@ -480,7 +480,10 @@ _cmd_status() {
 
 _cmd_in() {
     local time_str="$1"; shift; local msg="$*"
-    [[ -z "$time_str" ]] && { msg_error "Usage: eye in <time> <message>"; return 1; }
+    if [[ -z "$time_str" || "$time_str" == "help" || "$time_str" == "-h" ]]; then
+        msg_info "$MSG_HELP_IN_USAGE"
+        return 0
+    fi
     local interval=$(_parse_duration "$time_str") || return 1
     local task_id="temp_$(date +%s)_$RANDOM"
     EYE_T_NAME="Reminder"; EYE_T_GROUP="temp"; EYE_T_INTERVAL="$interval"; EYE_T_DURATION=0
@@ -610,6 +613,7 @@ _cmd_usage() {
     echo ""
     echo "$MSG_USAGE_MANAGE"
     echo "$MSG_USAGE_CMD_ADD"
+    echo "$MSG_USAGE_CMD_IN"
     echo "$MSG_USAGE_CMD_RM"
     echo "$MSG_USAGE_CMD_GROUP"
     echo "$MSG_USAGE_CMD_EDIT"
