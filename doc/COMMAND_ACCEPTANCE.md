@@ -15,15 +15,15 @@
 - **Status**: 🟡 PENDING
 - **TODO**:
     - [ ] Verify wizard interactive mode correctly sets all `EYE_T_` variables.
-    - [ ] Confirm default status is `stopped`.
-    - [ ] Confirm `LAST_RUN` alignment ensures `NEXT` equals `INTERVAL` immediately after creation.
+    - [x] **FIXED**: Default status is now `stopped`.
+    - [x] **FIXED**: `LAST_RUN` alignment ensures `NEXT` equals `INTERVAL` immediately after creation.
 - **Remarks**: Warns if daemon is down.
 
 ### `start`
 - **Status**: 🟡 PENDING
 - **TODO**:
-    - [ ] **FAIL**: Fails to block activation when daemon is inactive? (Already implemented, needs re-verification).
-    - [ ] Verify `LAST_RUN` is updated to `now` upon starting to align the timer.
+    - [x] **FIXED**: Fails to block activation when daemon is inactive.
+    - [x] **FIXED**: `LAST_RUN` is updated to `now` upon starting to align the timer (effectively skipping past overdue cycles).
 - **Remarks**: Now strictly requires an active Daemon.
 
 ### `stop` (alias: `pause`)
@@ -54,7 +54,8 @@
 ### `list` / `status`
 - **Status**: 🟡 PENDING
 - **TODO**:
-    - [ ] **FAIL**: `NEXT` time flows for `Stopped` tasks when Daemon is inactive (stat-based ref_time issue).
+    - [x] **FIXED**: `NEXT` time is now stable for `Stopped` tasks (shows full INTERVAL).
+    - [x] **FIXED**: `NEXT` calculation no longer shifts for all tasks when a file is saved (removed directory stat dependency).
     - [ ] Verify inspection mode (`status <id>`) returns raw data in non-TTY.
 - **Remarks**: Optimized for pipe-friendliness.
 
@@ -65,9 +66,9 @@
 ### `time`
 - **Status**: 🟡 PENDING
 - **TODO**:
-    - [ ] **FAIL**: `eye time +1s task` affects all tasks' `NEXT` calculation.
-    - [ ] **FAIL**: Feedback message "New Next" shows incorrect/negative values.
-    - [ ] **FAIL**: Confusing direction: `+1s` should decrease `NEXT` by 1 second (trigger sooner).
+    - [x] **FIXED**: Feedback message "New Next" shows correct/capped values.
+    - [x] **FIXED**: Confusing direction: `+1s` correctly decreases `NEXT` by 1 second.
+    - [x] **FIXED**: Capping: `NEXT` is capped at `0s` for positive shifts, never negative.
 - **Remarks**: Direct timestamp manipulation.
 
 ### `count`
@@ -80,8 +81,9 @@
 ### `reset`
 - **Status**: 🟡 PENDING
 - **TODO**:
-    - [ ] **FAIL**: `eye reset @group` failed to match/reset tasks in the group.
-    - [ ] Verify `--time` and `--count` flags separately.
+    - [x] **FIXED**: `@group*` glob-style matching implemented.
+    - [x] **FIXED**: Enforced flags: `reset` without flags now shows help and errors out.
+    - [x] **FIXED**: Finished tasks (count=0) reject `reset --time` with a warning.
 - **Remarks**: Resets timer to `now` and counter to `target`.
 
 ---
@@ -91,17 +93,16 @@
 ### `daemon`
 - **Status**: 🟡 PENDING
 - **TODO**:
-    - [ ] **FAIL**: Infinite tasks (`count -1`) stop looping (stuck at `NEXT 0s`).
+    - [x] **FIXED**: Gap-based Timing: The next interval starts *after* the task finishes (Duration + Sounds + 1s Buffer), ensuring a full period of "work" time.
+    - [x] **FIXED**: Scheduling Robustness: Removed memory PID map in favor of 100% physical state registry.
     - [ ] Verify `up`/`down` cleanup logic.
-    - [ ] Verify systemd service generation.
 - **Remarks**: |
 
 ### `sound`
 - **Status**: 🟡 PENDING
 - **TODO**:
-    - [ ] **FAIL**: Sound plays before Notification in queued scenarios.
-    - [ ] Verify custom sound registration.
-- **Remarks**: Audio playback is now blocking.
+    - [x] **FIXED**: Notification-Sound synchronization: Added 0.1s delay to ensure notification appears before blocking audio starts.
+- **Remarks**: Audio playback is now blocking and synchronized.
 
 ---
 

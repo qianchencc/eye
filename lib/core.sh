@@ -63,6 +63,11 @@ _core_task_time_shift() {
         EYE_T_LAST_RUN=$((EYE_T_LAST_RUN + seconds))
     else
         EYE_T_LAST_RUN=$((EYE_T_LAST_RUN - seconds))
+        # Logical Cap: If shift makes it overdue, cap LAST_RUN so NEXT is 0
+        local now=$(date +%s)
+        if [ $((now - EYE_T_LAST_RUN)) -gt "$EYE_T_INTERVAL" ]; then
+            EYE_T_LAST_RUN=$((now - EYE_T_INTERVAL))
+        fi
     fi
 }
 

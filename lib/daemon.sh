@@ -165,6 +165,9 @@ _execute_task() {
     # --- State Merge & Persistence ---
     if _load_task "$task_id"; then
         EYE_T_LAST_TRIGGER_AT=$(date +%s)
+        # Restart the timer from completion of execution/interaction
+        EYE_T_LAST_RUN=$(date +%s)
+        
         if [[ "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
             EYE_T_REMAIN_COUNT=$((EYE_T_REMAIN_COUNT - 1))
         fi
@@ -310,12 +313,13 @@ _daemon_loop() {
                     fi
 
                     if [ $diff -ge "$EYE_T_INTERVAL" ]; then
-                        # Update timestamp BEFORE backgrounding
                         local intervals_passed=$(( diff / EYE_T_INTERVAL ))
-                        EYE_T_LAST_RUN=$(( EYE_T_LAST_RUN + (intervals_passed * EYE_T_INTERVAL) ))
+                        log_sched "$task_id" "Triggering ($intervals_passed intervals passed)"
+                        
+                        # Update timestamp BEFORE backgrounding to prevent immediate re-triggering
+                        EYE_T_LAST_RUN=$current_time
                         _save_task "$task_id"
                         
-                        log_sched "$task_id" "Triggering ($intervals_passed intervals passed)"
                         _execute_task "$task_id" &
                     fi
                 fi

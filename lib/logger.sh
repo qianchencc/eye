@@ -10,8 +10,8 @@ LOG_LEVEL_WARN=2
 LOG_LEVEL_ERROR=3
 LOG_LEVEL_SYSTEM=4 # Special level for critical system events
 
-# Current Log Level (Set to DEBUG for troubleshooting)
-CURRENT_LOG_LEVEL=$LOG_LEVEL_DEBUG
+# Current Log Level (Default to INFO)
+CURRENT_LOG_LEVEL=$LOG_LEVEL_INFO
 
 # Colors for log file (optional, readable with less -R)
 _LOG_C_RESET='\033[0m'

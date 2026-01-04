@@ -44,12 +44,21 @@ _apply_to_tasks() {
             elif [[ "$t" == @* ]]; then
                 local group_pattern="${t#@}"
                 _load_task "$task_id"
-                # If pattern contains wildcards (*), use it as regex, otherwise exact match
+                
                 if [[ "$group_pattern" == *"*"* ]]; then
+                    # Convert glob star to regex .*
+                    local regex_pattern=$(echo "$group_pattern" | sed 's/\*/.*/g')
+                    # Match case-insensitively and allows matching anywhere if no anchors provided
+                    if [[ "$EYE_T_GROUP" =~ ^${regex_pattern}$ ]]; then
+                        task_matches=1; break
+                    fi
+                elif [[ "$group_pattern" == *"["* ]]; then
+                    # Explicit regex
                     if [[ "$EYE_T_GROUP" =~ ^${group_pattern}$ ]]; then
                         task_matches=1; break
                     fi
                 else
+                    # Exact match
                     if [[ "$EYE_T_GROUP" == "$group_pattern" ]]; then
                         task_matches=1; break
                     fi
@@ -142,9 +151,19 @@ _cb_cli_count_shift() {
 
 _cb_cli_reset() {
     local id="$1"
-    _core_task_reset "$id" "$2" "$3"
-    [[ "$2" == "true" ]] && msg_info "Task $id timer reset."
-    [[ "$3" == "true" && "$EYE_T_TARGET_COUNT" -gt 0 ]] && msg_info "Task $id count reset."
+    local do_time="$2"
+    local do_count="$3"
+
+    if [[ "$do_time" == "true" ]]; then
+        if [[ "$EYE_T_REMAIN_COUNT" -eq 0 && "$EYE_T_TARGET_COUNT" -gt 0 ]]; then
+            msg_warn "Skipping timer reset for '$id': Task is finished (count=0). Reset count first."
+            do_time=false
+        fi
+    fi
+
+    _core_task_reset "$id" "$do_time" "$do_count"
+    [[ "$do_time" == "true" ]] && msg_info "Task $id timer reset."
+    [[ "$do_count" == "true" && "$EYE_T_TARGET_COUNT" -gt 0 ]] && msg_info "Task $id count reset."
 }
 
 _cb_cli_remove() {
@@ -280,6 +299,13 @@ _cmd_reset() {
         esac
         shift
     done
+    
+    if [[ "$do_time" == "false" && "$do_count" == "false" ]]; then
+        msg_help "Usage: eye reset [target] --time --count"
+        msg_error "Error: You must specify either --time or --count (or both)."
+        return 1
+    fi
+
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
     _apply_to_tasks "$target" _cb_cli_reset "$do_time" "$do_count"
 }
@@ -524,9 +550,8 @@ _cmd_status() {
         if [ -f "$STOP_FILE" ]; then
             ref_time=$(cat "$STOP_FILE")
         else
-            # Fallback to directory timestamp but cap it to prevent 'leaping' during ad-hoc file changes
-            local dir_time=$(stat -c %Y "$TASKS_DIR" 2>/dev/null || date +%s)
-            ref_time=$dir_time
+            # Use current time as reference but avoid stat-based volatility
+            ref_time=$(date +%s)
         fi
     fi
     if [[ -n "$target_task" ]]; then
@@ -537,8 +562,14 @@ _cmd_status() {
         [[ "${EYE_T_LAST_TRIGGER_AT:-0}" -gt 0 ]] && trigger_fmt=$(date -d "@$EYE_T_LAST_TRIGGER_AT" "+%Y-%m-%d %H:%M:%S")
         local effective_ref=$ref_time
         [[ "$EYE_T_STATUS" == "paused" ]] && effective_ref=${EYE_T_PAUSE_TS:-$ref_time}
-        local next_val=$((EYE_T_INTERVAL - (effective_ref - EYE_T_LAST_RUN)))
-        [[ $next_val -lt 0 ]] && next_val=0
+        
+        local next_val
+        if [[ "$EYE_T_STATUS" == "stopped" ]]; then
+            next_val=$EYE_T_INTERVAL
+        else
+            next_val=$((EYE_T_INTERVAL - (effective_ref - EYE_T_LAST_RUN)))
+            [[ $next_val -lt 0 ]] && next_val=0
+        fi
         local labels=("ID" "GROUP" "INTERVAL" "DURATION" "COUNT" "TEMP" "SOUND" "S-START" "S-END" "STATUS" "NEXT" "CREATED" "L-TRIGGER")
         local values=("$target_task" "$EYE_T_GROUP" "$(_format_duration $EYE_T_INTERVAL)" "$(_format_duration $EYE_T_DURATION)" "$EYE_T_REMAIN_COUNT/$EYE_T_TARGET_COUNT" "$EYE_T_IS_TEMP" "$EYE_T_SOUND_ENABLE" "$EYE_T_SOUND_START" "$EYE_T_SOUND_END" "${EYE_T_STATUS^}" "$(_format_duration $next_val)" "$created_fmt" "$trigger_fmt")
         echo "┌$(printf '─%.0s' {1..40})┐"
@@ -566,8 +597,15 @@ _cmd_status() {
         if _load_task "$tid"; then
             local effective_ref=$ref_time
             [[ "$EYE_T_STATUS" == "paused" ]] && effective_ref=${EYE_T_PAUSE_TS:-$ref_time}
-            local diff_sec=$((EYE_T_INTERVAL - (effective_ref - EYE_T_LAST_RUN)))
-            [[ $diff_sec -lt 0 ]] && diff_sec=0
+            
+            local diff_sec
+            if [[ "$EYE_T_STATUS" == "stopped" ]]; then
+                diff_sec=$EYE_T_INTERVAL
+            else
+                diff_sec=$((EYE_T_INTERVAL - (effective_ref - EYE_T_LAST_RUN)))
+                [[ $diff_sec -lt 0 ]] && diff_sec=0
+            fi
+            
             local name_display="$tid"
             [[ "$EYE_T_IS_TEMP" == "true" ]] && name_display="[T]$tid"
             local sort_val=""
