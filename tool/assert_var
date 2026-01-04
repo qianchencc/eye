@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# ==============================================================================
+# tool/assert_var
+# 
+# Description:
+#   Asserts that a specific Eye Task variable matches an expected value.
+#   It loads the task using 'eye status' and checks the variable.
+#
+# Usage:
+#   ./tool/assert_var <task_name> <VAR_SUFFIX> <EXPECTED_VALUE>
+#
+# Arguments:
+#   <task_name>: The ID of the task.
+#   <VAR_SUFFIX>: The suffix of the variable (e.g., STATUS for EYE_T_STATUS).
+#   <EXPECTED_VALUE>: The exact string expected.
+#
+# Example:
+#   ./tool/assert_var temp1 STATUS stopped
+# ==============================================================================
+
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <task_name> <VAR_SUFFIX> <EXPECTED_VALUE>"
+    exit 2
+fi
+
+TASK_NAME="$1"
+VAR_SUFFIX="$2"
+shift 2
+EXPECTED_VALUE="$*"
+
+# --- Environment Setup ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EYE_BIN="$(cd "$SCRIPT_DIR/../bin" && pwd)/eye"
+
+if [ ! -x "$EYE_BIN" ]; then
+    echo "Error: Cannot locate 'bin/eye'."
+    exit 2
+fi
+
+# 1. Load Task Variables
+TASK_DATA=$("$EYE_BIN" status "$TASK_NAME" 2>/dev/null)
+
+if [ -z "$TASK_DATA" ]; then
+    echo "Error: Task '$TASK_NAME' not found or error loading."
+    exit 2
+fi
+
+# Clear potential conflicts
+unset "EYE_T_$VAR_SUFFIX"
+
+eval "$TASK_DATA"
+
+# Construct the full variable name
+FULL_VAR_NAME="EYE_T_$VAR_SUFFIX"
+ACTUAL_VALUE="${!FULL_VAR_NAME}"
+
+if [[ "$ACTUAL_VALUE" == "$EXPECTED_VALUE" ]]; then
+    echo "PASS: $FULL_VAR_NAME == '$EXPECTED_VALUE'"
+    exit 0
+else
+    echo "FAIL: $FULL_VAR_NAME == '$ACTUAL_VALUE' (Expected: '$EXPECTED_VALUE')"
+    exit 1
+fi

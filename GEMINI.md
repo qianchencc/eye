@@ -186,6 +186,39 @@
 
 ---
 
+## 4. 辅助工具 (Auxiliary Tools)
+
+**位置**: `tool/`
+**描述**: 提供了一组用于脚本化集成、格式化输出及自动化测试的通用脚本。这些工具不直接打包在 `eye` 二进制中，但作为核心能力的扩展提供。
+
+* **`tool/get_status <task_name> [task_name...]`**
+* **Usage**: `tool/get_status task1 task2`
+* **描述**:
+    * 输出单行详细状态表格，包含 ID, Group, Interval, Status, Next 等字段。
+    * 支持批量查询，每一行对应一个任务。
+    * 适合用于需要特定格式展示（如 Tmux 状态栏、监控仪表盘）的场景。
+    * **Example**:
+      ```
+      ID       │ GROUP   │ INTERVAL │ DUR │ COUNT   │ STATUS  │ NEXT
+      temp1    │ default │ 20m 0s   │ 20s │ (-1/-1) │ Stopped │ 0s
+      temp2    │ work    │ 45m 0s   │ 0s  │ (5/10)  │ Running │ 12m
+      ```
+
+* **`tool/get_next <task_name> [task_name...]`**
+* **Usage**: `tool/get_next task1 task2`
+* **描述**:
+    * 极简模式，仅输出 ID, NEXT (倒计时), STATUS。
+    * 支持批量查询。
+    * 适合空间受限的显示环境。
+    * **Example**:
+      ```
+      ID       │NEXT     │ STATUS
+      temp1    │0s       │ Stopped
+      temp2    │12m      │ Running
+      ```
+
+---
+
 ## 设计补充说明
 
 1. **参数位置的灵活性**：

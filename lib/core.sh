@@ -59,14 +59,17 @@ _core_task_time_shift() {
     local seconds=$(_parse_duration "$val_str")
     if [ $? -ne 0 ]; then return 1; fi
     
+    # Determine reference time for shift
+    local ref=$(date +%s)
+    [[ "$EYE_T_STATUS" == "paused" ]] && ref=${EYE_T_PAUSE_TS:-$ref}
+
     if [[ "$sign" == "-" ]]; then
         EYE_T_LAST_RUN=$((EYE_T_LAST_RUN + seconds))
     else
         EYE_T_LAST_RUN=$((EYE_T_LAST_RUN - seconds))
-        # Logical Cap: If shift makes it overdue, cap LAST_RUN so NEXT is 0
-        local now=$(date +%s)
-        if [ $((now - EYE_T_LAST_RUN)) -gt "$EYE_T_INTERVAL" ]; then
-            EYE_T_LAST_RUN=$((now - EYE_T_INTERVAL))
+        # Logical Cap: If shift makes it overdue, cap LAST_RUN so NEXT is 0 relative to ref
+        if [ $((ref - EYE_T_LAST_RUN)) -gt "$EYE_T_INTERVAL" ]; then
+            EYE_T_LAST_RUN=$((ref - EYE_T_INTERVAL))
         fi
     fi
 }
@@ -86,7 +89,9 @@ _core_task_reset() {
     local do_count="$3"
     
     if [[ "$do_time" == "true" ]]; then
-        EYE_T_LAST_RUN=$(date +%s)
+        local ref=$(date +%s)
+        [[ "$EYE_T_STATUS" == "paused" ]] && ref=${EYE_T_PAUSE_TS:-$ref}
+        EYE_T_LAST_RUN=$ref
     fi
     
     if [[ "$do_count" == "true" ]]; then

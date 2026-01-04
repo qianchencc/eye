@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# ==============================================================================
+# tool/get_next
+# 
+# Description:
+#   Displays a simplified status row focusing on NEXT trigger time for given task(s).
+#   Uses 'eye' internal logic to load task variables and calculate 'NEXT' time.
+#
+# Usage:
+#   ./tool/get_next <task_name> [task_name...]
+#
+# Example:
+#   ./tool/get_next temp1 temp2
+#   ID       │NEXT     │ STATUS
+#   temp1    │0s       │ Stopped
+#   temp2    │12m      │ Running
+# ==============================================================================
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <task_name> [task_name...]"
+    exit 1
+fi
+
+# --- Environment Setup ---
+# Resolve script directory and library path
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+EYE_BIN="$(cd "$SCRIPT_DIR/../bin" && pwd)/eye"
+
+if [ ! -d "$LIB_DIR" ] || [ ! -x "$EYE_BIN" ]; then
+    echo "Error: Cannot locate 'lib' or 'bin/eye' in parent directories."
+    exit 1
+fi
+
+# Source utility functions for _format_duration
+source "$LIB_DIR/utils.sh"
+
+# --- Header ---
+# Layout:
+# ID       │NEXT     │ STATUS
+# Widths: 9, 9, auto
+printf "% -8s │% -9s │ %s\n" \
+    "ID" "NEXT" "STATUS"
+
+# --- Main Logic Loop ---
+
+process_task() {
+    local task_name="$1"
+    
+    # 1. Load Task Variables
+    local task_data=$("$EYE_BIN" status "$task_name" 2>/dev/null)
+
+    if [ -z "$task_data" ]; then
+        printf "% -8s │% -9s │ %s\n" "$task_name" "--" "Error: Not found"
+        return
+    fi
+
+    unset EYE_T_NAME EYE_T_STATUS EYE_T_LAST_RUN EYE_T_PAUSE_TS EYE_T_INTERVAL
+    eval "$task_data"
+
+    # 2. Calculate NEXT time
+    local ref_time=$(date +%s)
+    local effective_ref=$ref_time
+
+    if [[ "$EYE_T_STATUS" == "paused" ]]; then
+        effective_ref=${EYE_T_PAUSE_TS:-
+$ref_time}
+    fi
+
+    local next_val
+    if [[ "$EYE_T_STATUS" == "stopped" ]]; then
+        next_val=$EYE_T_INTERVAL
+    else
+        local elapsed=$((effective_ref - EYE_T_LAST_RUN))
+        next_val=$((EYE_T_INTERVAL - elapsed))
+        [[ $next_val -lt 0 ]] && next_val=0
+    fi
+
+    # 3. Format Output Fields
+    local f_id="${EYE_T_NAME:-
+$task_name}"
+    local status_cap="Unknown"
+    if [[ -n "$EYE_T_STATUS" ]]; then
+        status_cap="$(tr '[:lower:]' '[:upper:]' <<< ${EYE_T_STATUS:0:1})${EYE_T_STATUS:1}"
+    fi
+    local f_next=$(_format_duration "$next_val")
+
+    # 4. Print Row
+    printf "% -8s │% -9s │ %s\n" \
+        "$f_id" "$f_next" "$status_cap"
+}
+
+for arg in "$@"; do
+    process_task "$arg"
+done

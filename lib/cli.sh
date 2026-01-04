@@ -288,28 +288,28 @@ _cmd_count() {
 _cmd_reset() {
     local target="" do_time=false do_count=false
     if [[ "$1" == "help" || "$1" == "-h" ]]; then
-        msg_help "Usage: eye reset [target] --time --count"
+        msg_help "Usage: eye reset [target] --time --count --all"
         return
     fi
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --time|-t) do_time=true ;; 
-            --count|-c) do_count=true ;; 
-            *) target="$1" ;; 
+            --time|-t) do_time=true ;;
+            --count|-c) do_count=true ;;
+            --all|-a) do_time=true; do_count=true ;;
+            *) target="$1" ;;
         esac
         shift
     done
     
     if [[ "$do_time" == "false" && "$do_count" == "false" ]]; then
-        msg_help "Usage: eye reset [target] --time --count"
-        msg_error "Error: You must specify either --time or --count (or both)."
+        msg_help "Usage: eye reset [target] --time --count --all"
+        msg_error "Error: You must specify either --time, --count, or --all."
         return 1
     fi
 
     if [[ -z "$target" && -t 0 ]]; then target="@$(_get_default_target)"; fi
     _apply_to_tasks "$target" _cb_cli_reset "$do_time" "$do_count"
 }
-
 _cmd_add() {
     # Explicit help check
     if [[ "$1" == "help" || "$1" == "-h" ]]; then
@@ -599,8 +599,17 @@ _cmd_status() {
             [[ "$EYE_T_STATUS" == "paused" ]] && effective_ref=${EYE_T_PAUSE_TS:-$ref_time}
             
             local diff_sec
-            if [[ "$EYE_T_STATUS" == "stopped" ]]; then
-                diff_sec=$EYE_T_INTERVAL
+            local pid_file="$STATE_DIR/pids/$tid"
+            local is_executing=false
+            if [[ -f "$pid_file" ]]; then
+                local t_pid=$(cat "$pid_file" 2>/dev/null)
+                if [[ -n "$t_pid" ]] && kill -0 "$t_pid" 2>/dev/null; then
+                    is_executing=true
+                fi
+            fi
+
+            if [[ "$is_executing" == "true" ]]; then
+                diff_sec=0
             else
                 diff_sec=$((EYE_T_INTERVAL - (effective_ref - EYE_T_LAST_RUN)))
                 [[ $diff_sec -lt 0 ]] && diff_sec=0

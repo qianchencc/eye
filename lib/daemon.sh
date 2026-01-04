@@ -120,9 +120,14 @@ _execute_task() {
 
     # 计数器熔断保护
     if [[ "$EYE_T_TARGET_COUNT" -gt 0 && "$EYE_T_REMAIN_COUNT" -le 0 ]]; then
-        EYE_T_STATUS="stopped"
-        _save_task "$task_id"
-        log_task "$task_id" "STOPPED (Count exhausted)"
+        if [[ "$EYE_T_IS_TEMP" == "true" ]]; then
+            rm -f "$TASKS_DIR/$task_id"
+            log_task "$task_id" "DELETED (Temp task exhausted)"
+        else
+            EYE_T_STATUS="stopped"
+            _save_task "$task_id"
+            log_task "$task_id" "STOPPED (Count exhausted)"
+        fi
         return
     fi
 

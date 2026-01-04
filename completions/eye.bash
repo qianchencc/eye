@@ -68,7 +68,7 @@ _eye_completions()
                 elif [[ "$cmd" == "reset" ]]; then
                      local tasks=$(_get_tasks)
                      local groups=$(_get_groups)
-                     COMPREPLY=( $(compgen -W "$tasks $groups --time --count" -- "$cur") )
+                     COMPREPLY=( $(compgen -W "$tasks $groups --time --count --all" -- "$cur") )
                 else
                     local tasks=$(_get_tasks)
                     local groups=$(_get_groups)
@@ -76,7 +76,7 @@ _eye_completions()
                 fi
             elif [[ "$cmd" == "reset" ]]; then
                 # After target, suggest flags
-                COMPREPLY=( $(compgen -W "--time --count" -- "$cur") )
+                COMPREPLY=( $(compgen -W "--time --count --all" -- "$cur") )
             fi
             ;;
         
